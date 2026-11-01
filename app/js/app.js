@@ -161,7 +161,8 @@ function cleanTitle(name) {
     .replace(/^\s*(\[[^\]]*\]|\|[^|]*\||[A-Z]{2,3}\s*[:|-])\s*/g, '')
     .replace(/\((19|20)\d{2}\)|\[(19|20)\d{2}\]/g, '')
     .replace(/\b(4k|uhd|fhd|hd|sd|h265|hevc|1080p|720p|dublado|legendado|dub|leg|nacional|\[l\]|\(l\))\b/ig, '')
-    .replace(/[\[\(][^\]\)]*[\]\)]/g, '').replace(/\s*[-|:]\s*$/, '').replace(/\s+/g, ' ').trim();
+    .replace(/[\[\(][^\]\)]*[\]\)]/g, '').replace(/\s*[-|:]\s*$/, '').replace(/\s+/g, ' ').trim()
+    .replace(/^[^A-Za-z0-9\u00C0-\u024F]+/, ''); // lists mark titles with "+ " or "- " in front: the search would not find them
   return { title: t || name, year: year };
 }
 
