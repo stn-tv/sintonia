@@ -33,6 +33,13 @@ if (seeded) save('cfg', S.cfg);
 var LIST_KEYS = ['type', 'server', 'user', 'pass', 'm3u', 'liveFormat'];
 if (!S.cfg.server && !S.cfg.m3u) Object.assign(S.cfg, load('list', {}));
 function keepList() { var o = {}; LIST_KEYS.forEach(function (k) { o[k] = S.cfg[k]; }); save('list', o); }
+/* the saved lists, each with the name the user gave it; S.cfg always holds a copy of the active one */
+var ENTRY_KEYS = ['type', 'server', 'user', 'pass', 'm3u'];
+S.lists = load('lists', null); S.listOn = load('listOn', null); S.draft = null;
+if (!S.lists) {
+  S.lists = [];
+  if (S.cfg.server || S.cfg.m3u) { var first = { id: 'l1', name: 'Minha Lista' }; ENTRY_KEYS.forEach(function (k) { first[k] = S.cfg[k]; }); S.lists.push(first); S.listOn = first.id; save('lists', S.lists); save('listOn', S.listOn); }
+}
 
 /* ================= helpers ================= */
 var $ = function (s, r) { return (r || document).querySelector(s); };
@@ -329,13 +336,15 @@ function groupAdult(view, cat) {
 /* the ids in favorites, history and marks only mean something inside one list:
  * each list keeps its own, so changing provider never opens the wrong title and coming back restores them */
 var LIST_DATA = ['favs', 'later', 'pos', 'hist', 'intro', 'brs', 'trk'], EMPTY = { favs: [], later: [], pos: {}, hist: [], intro: {}, brs: {}, trk: {} };
-function listId() { var c = S.cfg; return c.type === 'xtream' ? 'x:' + c.user : 'm:' + norm(c.m3u); }
+function listId() { var c = S.cfg; return c.type === 'xtream' ? 'x:' + norm(c.server) + ':' + c.user : 'm:' + norm(c.m3u); }
 function switchListData() {
   var id = listId(), was = load('listId', null);
+  // ids used to be just the user: the list in use keeps its data under the new id
+  if (was && was === 'x:' + S.cfg.user) { was = id; save('listId', id); }
   if (was && was !== id) {
     var old = {}; LIST_DATA.forEach(function (k) { old[k] = S[k]; });
     save('data.' + was, old);
-    var next = load('data.' + id, {});
+    var next = load('data.' + id, load('data.x:' + S.cfg.user, {}));
     LIST_DATA.forEach(function (k) { S[k] = next[k] || JSON.parse(JSON.stringify(EMPTY[k])); save(k, S[k]); });
     S.cat = {}; S.spot = {};
   }
@@ -1113,22 +1122,14 @@ function doSearch(text) {
 }
 
 function renderSettings() {
-  var c = S.cfg, has = c.server || c.m3u;
+  var c = S.cfg;
   function seg(name, opts) { return '<div class="row seg">' + opts.map(function (o) { return '<button class="f btn' + (c[name] === o[0] ? ' on' : '') + '" data-seg="' + name + '" data-val="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div>'; }
   function row(label, html) { return '<div class="setrow"><span class="setlabel">' + label + '</span>' + html + '</div>'; }
-  var where = !has ? 'Nenhuma Lista Adicionada' : c.type === 'xtream' ? c.server.replace(/^https?:\/\//, '') + ' · ' + c.user : 'Link M3U';
   $('#content').innerHTML = '<div class="scroll"><div class="form sets">' +
-    '<h2 class="settitle">Lista</h2>' + row('Lista Atual', '<span class="setvalue">' + esc(where) + '</span>') +
-    '<div class="row"><button class="f btn primary" id="openRemote">Adicionar pelo Celular</button><button class="f btn" id="reload">Recarregar Lista</button><button class="f btn" id="manualBtn">Digitar os Dados</button></div>' +
-    '<div id="manualList"' + (has ? ' class="hidden"' : '') + '>' +
-    '<label>Tipo de Lista</label>' + seg('type', [['xtream', 'Login Xtream'], ['m3u', 'Link M3U']]) +
-    '<div id="xtreamFields"' + (c.type === 'xtream' ? '' : ' class="hidden"') + '>' +
-      '<label>Servidor (Ex.: http://exemplo.com:8080)</label><input class="f inp" readonly id="s_server" value="' + esc(c.server) + '" style="width:100%">' +
-      '<label>Usuário</label><input class="f inp" readonly id="s_user" value="' + esc(c.user) + '" style="width:100%">' +
-      '<label>Senha</label><input class="f inp" readonly id="s_pass" type="password" value="' + esc(c.pass) + '" style="width:100%">' +
-    '</div>' +
-    '<div id="m3uFields"' + (c.type === 'm3u' ? '' : ' class="hidden"') + '><label>Link da Lista M3U (Colar o Link Completo Preenche Servidor, Usuário e Senha)</label><input class="f inp" readonly id="s_m3u" value="' + esc(c.m3u) + '" style="width:100%"></div>' +
-    '<div class="row"><button class="f btn primary" id="saveCfg">Salvar e Carregar Lista</button></div></div>' +
+    '<h2 class="settitle">Listas</h2>' +
+    (S.lists.length ? S.lists.map(listRow).join('') : '<p class="note">Nenhuma Lista Adicionada</p>') +
+    '<div class="row"><button class="f btn primary" id="openRemote">Adicionar pelo Celular</button><button class="f btn" id="newList">Digitar uma Lista</button>' + (S.lists.length ? '<button class="f btn" id="reload">Recarregar Lista</button>' : '') + '</div>' +
+    (S.draft ? listForm(S.draft) : '') +
     '<h2 class="settitle">Canais</h2>' +
     row('Qualidade', seg('quality', [['all', 'Todas'], ['fhd265', 'Priorizar FHD H.265'], ['h265', 'Só H.265']])) +
     row('Formato', seg('liveFormat', [['m3u8', 'HLS'], ['ts', 'TS']])) +
@@ -1143,7 +1144,7 @@ function renderSettings() {
     '<div class="row"><button class="f btn" id="saveKeys">Salvar Chaves</button></div>' +
     '<h2 class="settitle">Conteúdo Adulto</h2>' +
     '<div class="row"><button class="f btn" id="adultLock">Bloqueio com Senha: ' + (c.adultLock ? 'ligado' : 'desligado') + '</button><button class="f btn" id="adultPin">Trocar Senha</button></div>' +
-    '<p class="note">Tudo Fica Salvo Só na TV. O App É Apenas um Player: Ele Não Fornece Canais Nem Conteúdo. Versão 2.1.9</p>' +
+    '<p class="note">Tudo Fica Salvo Só na TV. O App É Apenas um Player: Ele Não Fornece Canais Nem Conteúdo. Versão 2.2.0</p>' +
     '</div></div>';
 }
 var KEY_FIELDS = [['tmdbKey', 'TMDB'], ['omdbKey', 'OMDb (IMDb)'], ['wyzieKey', 'Wyzie'], ['osKey', 'OpenSubtitles']];
@@ -1167,16 +1168,64 @@ function chooser(title, opts, cur, done) {
 function pickRateSrc() {
   chooser('Classificação', rateOptions(), S.cfg.rateSrc, function (v) { S.cfg.rateSrc = v; save('cfg', S.cfg); setText('#rateSrc span', rateLabel()); });
 }
-function saveSettings() {
-  var c = S.cfg, v = function (id) { var e = $('#' + id); return e ? e.value.trim() : ''; };
-  // blank fields never replace a list that is already there
-  if (c.type === 'xtream') { if (v('s_server') && v('s_user')) { c.server = v('s_server'); c.user = v('s_user'); c.pass = v('s_pass'); } }
-  else if (v('s_m3u')) { c.m3u = v('s_m3u'); applyLink(c.m3u); }
-  if (c.server && !/^https?:\/\//i.test(c.server)) c.server = 'http://' + c.server;
-  save('cfg', c);
-  reload();
+function listRow(l) {
+  return '<div class="setrow"><button class="f btn listname" data-list="' + esc(l.id) + '" aria-label="Editar ' + esc(l.name) + '">' + esc(l.name) + '</button>' +
+    (l.id === S.listOn ? '<span class="setvalue">Em Uso</span>' : '<button class="f btn" data-use="' + esc(l.id) + '">Ativar</button>') + '</div>';
 }
-function applyLink(txt) { var l = parseLink(txt); if (l) Object.assign(S.cfg, l); return l; }
+function listForm(d) {
+  function field(id, label, val, pw) { return '<label>' + label + '</label><input class="f inp" readonly id="' + id + '"' + (pw ? ' type="password"' : '') + ' value="' + esc(val) + '" style="width:100%">'; }
+  function kind(v, label) { return '<button class="f btn' + (d.type === v ? ' on' : '') + '" data-ltype="' + v + '">' + label + '</button>'; }
+  return '<div id="listForm"><h2 class="settitle">' + (d.id ? 'Editar Lista' : 'Nova Lista') + '</h2>' + field('l_name', 'Nome da Lista', d.name) +
+    '<label>Tipo de Lista</label><div class="row seg">' + kind('xtream', 'Login Xtream') + kind('m3u', 'Link M3U') + '</div>' +
+    '<div id="xtreamFields"' + (d.type === 'xtream' ? '' : ' class="hidden"') + '>' + field('l_server', 'Servidor (Ex.: http://exemplo.com:8080)', d.server) + field('l_user', 'Usuário', d.user) + field('l_pass', 'Senha', d.pass, true) + '</div>' +
+    '<div id="m3uFields"' + (d.type === 'm3u' ? '' : ' class="hidden"') + '>' + field('l_m3u', 'Link da Lista M3U (Colar o Link Completo Preenche Servidor, Usuário e Senha)', d.m3u) + '</div>' +
+    '<div class="row"><button class="f btn primary" id="listUse">Salvar e Usar Esta Lista</button><button class="f btn" id="listSave">Salvar</button>' +
+    (d.id && d.id !== S.listOn ? '<button class="f btn" id="listDel">Excluir</button>' : '') + '<button class="f btn" id="listCancel">Cancelar</button></div></div>';
+}
+function openDraft(d) { S.draft = d; if (S.view === 'settings') renderSettings(); else go('settings'); $('#l_name').focus(); }
+function newDraft() { return { id: null, name: '', type: 'xtream', server: '', user: '', pass: '', m3u: '' }; }
+function closeDraft() { S.draft = null; renderSettings(); focusContent(); }
+function saveDraft(use) {
+  var d = S.draft, v = function (id) { var e = $('#' + id); return e ? e.value.trim() : ''; }, l = { name: v('l_name') };
+  if (!l.name) { toast('Dê um Nome à Lista'); $('#l_name').focus(); return; }
+  if (d.type === 'xtream') {
+    l.type = 'xtream'; l.server = v('l_server'); l.user = v('l_user'); l.pass = v('l_pass'); l.m3u = '';
+    if (!l.server || !l.user) { toast('Preencha Servidor e Usuário'); return; }
+    if (!/^https?:\/\//i.test(l.server)) l.server = 'http://' + l.server;
+  } else {
+    var p = parseLink(v('l_m3u'));
+    if (!p) { toast('Link Inválido'); return; }
+    Object.assign(l, { server: '', user: '', pass: '', m3u: '' }, p);
+  }
+  var cur = d.id ? S.lists.filter(function (x) { return x.id === d.id; })[0] : null;
+  if (cur) Object.assign(cur, l);
+  else { cur = Object.assign({ id: 'l' + Date.now() }, l); S.lists.push(cur); }
+  save('lists', S.lists); S.draft = null;
+  if (use || cur.id === S.listOn || !S.listOn) { activateList(cur.id); return; }
+  renderSettings(); focusContent(); toast('Lista Salva');
+}
+function setActive(id) {
+  var l = S.lists.filter(function (x) { return x.id === id; })[0];
+  S.listOn = l ? id : null; save('listOn', S.listOn);
+  if (l) { ENTRY_KEYS.forEach(function (k) { S.cfg[k] = l[k]; }); save('cfg', S.cfg); }
+}
+/* a list that doesn't load never strands the TV: the one that was working comes back */
+function activateList(id) {
+  var prev = S.listOn === id ? null : S.listOn, l = S.lists.filter(function (x) { return x.id === id; })[0];
+  setActive(id); S.loaded = false; S.cat = {};
+  setBusy('Carregando ' + l.name + '…');
+  loadAll().then(function () { setBusy(''); toast('Lista Carregada ✓'); go('home'); focusNav(); }, function (e) {
+    if (!prev) { loadFailed(e); return; }
+    setActive(prev); toast(l.name + ' Não Carregou: ' + e.message, 6000); reload();
+  });
+}
+function deleteList() {
+  var d = S.draft;
+  chooser('Excluir ' + d.name + '?', [['n', 'Cancelar'], ['s', 'Excluir']], 'n', function (v) {
+    if (v !== 's') { $('#listDel').focus(); return; }
+    S.lists = S.lists.filter(function (x) { return x.id !== d.id; }); save('lists', S.lists); closeDraft(); toast('Lista Excluída');
+  });
+}
 function reload() {
   S.loaded = false; S.cat = {};
   setBusy('Carregando Sua Lista…');
@@ -1427,10 +1476,14 @@ function showQR(url) {
   setText('#rUrl', 'Ou Abra no Navegador: ' + url); setText('#rState', 'Aguardando o Celular…');
 }
 function receiveList(l) {
-  if (l.link) { if (!applyLink(l.link)) { toast('Link Inválido'); return; } }
-  else if (l.server) { S.cfg.type = 'xtream'; S.cfg.server = /^https?:\/\//i.test(l.server) ? l.server : 'http://' + l.server; S.cfg.user = l.user || ''; S.cfg.pass = l.pass || ''; }
+  var d = newDraft();
+  if (l.link) { var p = parseLink(l.link); if (!p) { toast('Link Inválido'); return; } Object.assign(d, p); }
+  else if (l.server) { d.server = /^https?:\/\//i.test(l.server) ? l.server : 'http://' + l.server; d.user = l.user || ''; d.pass = l.pass || ''; }
   else return;
-  save('cfg', S.cfg); closeRemote(); setBusy('Lista Recebida. Carregando…'); reload();
+  // the same list sent again edits the saved one instead of repeating it
+  var had = S.lists.filter(function (x) { return x.type === d.type && (d.type === 'm3u' ? x.m3u === d.m3u : x.server === d.server && x.user === d.user); })[0];
+  if (had) { d.id = had.id; d.name = had.name; }
+  closeRemote(); openDraft(d); toast('Lista Recebida. Dê um Nome a Ela.', 5000);
 }
 function closeRemote() {
   if (remoteBridge) { try { remoteBridge.cancel(); } catch (e) {} remoteBridge = null; }
@@ -2298,7 +2351,18 @@ document.addEventListener('click', function (e) {
   if (t.hasAttribute('data-clear')) { if (t.getAttribute('data-clear') === '0') closePick(); else clearSeen(t.getAttribute('data-clear')); return; }
   if (t.hasAttribute('data-choose')) { var cf = $('#pick')._choose, cv = t.getAttribute('data-choose'); closePick(); cf(cv); return; }
   if (t.id === 'rateSrc') { pickRateSrc(); return; }
-  if (t.id === 'manualBtn') { $('#manualList').classList.toggle('hidden'); return; }
+  if (t.id === 'newList') { openDraft(newDraft()); return; }
+  if (t.hasAttribute('data-list')) { openDraft(JSON.parse(JSON.stringify(S.lists.filter(function (x) { return x.id === t.getAttribute('data-list'); })[0]))); return; }
+  if (t.hasAttribute('data-use')) { activateList(t.getAttribute('data-use')); return; }
+  if (t.hasAttribute('data-ltype')) {
+    S.draft.type = t.getAttribute('data-ltype');
+    $$('[data-ltype]').forEach(function (b) { b.classList.toggle('on', b === t); });
+    $('#xtreamFields').classList.toggle('hidden', S.draft.type !== 'xtream'); $('#m3uFields').classList.toggle('hidden', S.draft.type !== 'm3u');
+    return;
+  }
+  if (t.id === 'listUse' || t.id === 'listSave') { saveDraft(t.id === 'listUse'); return; }
+  if (t.id === 'listDel') { deleteList(); return; }
+  if (t.id === 'listCancel') { closeDraft(); return; }
   if (t.classList.contains('resume')) { resumeChoice(t.getAttribute('data-r')); return; }
   if (t.classList.contains('pick')) { var pk = $('#pick'), pl = pk._items, pi = +t.getAttribute('data-i'); closePick(); play(pl[pi], { list: pl, index: pi }); return; }
   if (t.id === 'hideBr') { S.hideBr = !S.hideBr; save('hideBr', S.hideBr); renderLibrary(S.view); $('#hideBr').focus(); return; }
@@ -2308,10 +2372,8 @@ document.addEventListener('click', function (e) {
   if (t.hasAttribute('data-seg')) {
     S.cfg[t.getAttribute('data-seg')] = t.getAttribute('data-val');
     $$('[data-seg="' + t.getAttribute('data-seg') + '"]').forEach(function (b) { b.classList.toggle('on', b === t); });
-    if (t.getAttribute('data-seg') === 'type') { $('#xtreamFields').classList.toggle('hidden', S.cfg.type !== 'xtream'); $('#m3uFields').classList.toggle('hidden', S.cfg.type !== 'm3u'); }
     save('cfg', S.cfg); return;
   }
-  if (t.id === 'saveCfg') { saveSettings(); return; }
   if (t.id === 'saveKeys') { saveKeys(); return; }
   if (t.id === 'reload') { reload(); return; }
   if (t.id === 'openRemote') { openRemote(); return; }
