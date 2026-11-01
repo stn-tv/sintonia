@@ -1166,19 +1166,23 @@ function showSec(sec) {
 function focusPanel() { var f = $('#setMain .f'); if (f) focusEl(f); }
 /* update on request: same check the shell runs in the background (casca/casca-update.js), then reopens on the new copy.
  * It lives here because this file updates over the air and the shell only with a new .ipk */
-var APP_VERSION = '2.3.2';
+var APP_VERSION = '2.3.3';
 function hashText(t) { var h = 2166136261; for (var i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(16); }
-function storeCopy(copy) {
+function storeError(err) { return new Error(err && err.name === 'QuotaExceededError' ? 'Sem Espaço para o App' : 'Falha ao Gravar' + (err && err.name ? ' (' + err.name + ')' : '')); }
+function storeCopy(copy, again) {
   return new Promise(function (res, rej) {
     var req = indexedDB.open('casca', 1);
     req.onupgradeneeded = function () { req.result.createObjectStore('copias'); };
-    req.onerror = function () { rej(new Error('Sem Espaço na TV')); };
+    req.onerror = function () { rej(storeError(req.error)); };
     req.onsuccess = function () {
       var tx = req.result.transaction('copias', 'readwrite'), box = tx.objectStore('copias'), r = box.get('atual');
       r.onsuccess = function () { if (r.result && r.result.id !== copy.id) box.put(r.result, 'anterior'); box.put(copy, 'atual'); };
       tx.oncomplete = function () { req.result.close(); res(); };
-      tx.onerror = tx.onabort = function () { req.result.close(); rej(new Error('Sem Espaço na TV')); };
+      tx.onerror = tx.onabort = function () { req.result.close(); rej(storeError(tx.error)); };
     };
+  }).catch(function (e) { // a TV short on memory can fail one write and take the next
+    if (again) throw e;
+    return new Promise(function (res) { setTimeout(res, 1500); }).then(function () { return storeCopy(copy, true); });
   });
 }
 function checkUpdate() {
