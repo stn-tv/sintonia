@@ -22,6 +22,8 @@ var S = {
 };
 // notes saved before the vote rule carry the unreliable scores: they are fetched again as titles appear
 if (load('ratingsV', 0) < 2) { S.ratings = {}; save('ratings', {}); save('ratingsV', 2); }
+// notes saved while the OMDb daily limit was hit came back without IMDb and were never asked again
+if (load('ratingsV', 0) < 3) { Object.keys(S.ratings).forEach(function (k) { var r = S.ratings[k]; if (r && r.om && !r.imdb) delete r.om; }); save('ratings', S.ratings); save('ratingsV', 3); }
 // English became the preferred audio after this setting was already saved on the TVs
 if (load('audioV', 0) < 1) { S.cfg.prefAudio = 'en'; save('cfg', S.cfg); save('audioV', 1); }
 // local-config.js is generated at packaging time (tools/gerar-config.js) and exists only in the .ipk: it seeds the keys
@@ -88,7 +90,8 @@ function reveal(el) {
   var src = el.getAttribute('data-src');
   if (src && S.imgBase && /i\.imgur\.com/.test(src)) { el._px = 1; el.src = viaTv(src); } // imgur refuses the TV's browser
   else if (src) el.src = src; else fillArt(el);
-  if (src && S.hideBr) fillArt(el); // the country only comes with the TMDB lookup
+  // the note and the country only come with the TMDB lookup: every poster on screen asks once, not only the focused one
+  if (src) { var it = S.byKey[el.getAttribute('data-fill')]; if (it && (S.hideBr || !rateDone(it))) fillArt(el); }
 }
 function observeImgs(root) { $$('img.lz:not([data-seen])', root).forEach(function (el) { el.setAttribute('data-seen', '1'); if (lazyIO) lazyIO.observe(el); else reveal(el); }); }
 function paint(el, html) { el.innerHTML = html; observeImgs(el); }
@@ -338,7 +341,9 @@ function tmdbFetch(path, params) {
   var url = 'https://api.themoviedb.org/3' + path + '?language=pt-BR' + (bearer ? '' : '&api_key=' + encodeURIComponent(k)) + (params || '');
   return getJSON(url, bearer ? { headers: { Authorization: 'Bearer ' + k } } : {});
 }
-var ratingPending = {}, MIN_VOTES = 50;
+var ratingPending = {}, MIN_VOTES = 50, omdbOff = 0;
+// a saved note that needs no new lookup (same test getRatings makes before asking again)
+function rateDone(it) { var had = cachedRating(it); return !!had && (had.om || !S.cfg.omdbKey || !had.tmdbId); }
 function noteBr(item, r) { var k = item.kind + ':' + item.id; if (r && r.br && !S.brs[k]) { S.brs[k] = 1; saveSoon('brs'); } return r; }
 // force: the viewer asked for something that needs the ids, even with the player open
 function getRatings(item, force) {
@@ -368,7 +373,10 @@ function getRatings(item, force) {
         out.br = (from.length ? from : made).indexOf('BR') >= 0;
         out.imdbId = ids.imdb_id;
         if (!ids.imdb_id || !S.cfg.omdbKey) return out;
+        if (Date.now() < omdbOff) return out;
         return getJSON('https://www.omdbapi.com/?i=' + ids.imdb_id + '&apikey=' + encodeURIComponent(S.cfg.omdbKey)).then(function (o) {
+          // the free key answers 1000 a day: over that it says "Request limit reached!" and the title must be asked again later
+          if (o && o.Response === 'False' && /limit|key/i.test(o.Error || '')) { omdbOff = Date.now() + 3 * 3600000; return out; }
           out.om = 1;
           if (o && o.imdbRating && o.imdbRating !== 'N/A') out.imdb = parseFloat(o.imdbRating);
           return out;
@@ -682,6 +690,27 @@ function showCat(kind, cat) {
   var items = tv ? liveItems(kind, cat) : searched(kind, cat);
   mountGrid(wrap, items, tv ? 'chlist' : 'posters', tv ? chHTML : posterHTML);
   if (tv) setText('#tvPath', pathLabel(kind, cat, items.length));
+  else if (S.sort === 'stars') warmStars(kind, cat, items);
+}
+/* "Mais Bem Avaliados" can only order titles whose note is known: look up the first ones of the group
+ * and put the grid back in order once, while the viewer is still at its top */
+var starsWarm = {};
+function warmStars(kind, cat, items) {
+  var k = kind + '|' + cat; if (starsWarm[k] || S.q || !S.cfg.tmdbKey) return; starsWarm[k] = 1;
+  var todo = items.filter(function (it) { return !rateDone(it); }).slice(0, 150);
+  if (!todo.length) return;
+  function next() {
+    if (!todo.length) return Promise.resolve();
+    var it = todo.shift();
+    return (playerOpen() ? new Promise(function (r) { setTimeout(r, 5000); }) : Promise.resolve()).then(function () { return getRatings(it); }).then(next, next);
+  }
+  Promise.all([next(), next()]).then(function () {
+    if (S.view !== kind || S.cat[kind] !== cat || S.sort !== 'stars' || S.q) return;
+    var f = document.activeElement, inGrid = f && f.closest && f.closest('#gridWrap');
+    if (inGrid && +f.getAttribute('data-idx') > 5) return; // already browsing further down: the new order waits for the next visit
+    showCat(kind, cat);
+    if (inGrid) { var first = $('#gridWrap .poster'); if (first) focusEl(first); }
+  });
 }
 
 /* ================= today's matches =================
