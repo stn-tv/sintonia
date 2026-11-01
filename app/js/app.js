@@ -35,7 +35,7 @@ if (!S.cfg.server && !S.cfg.m3u) Object.assign(S.cfg, load('list', {}));
 function keepList() { var o = {}; LIST_KEYS.forEach(function (k) { o[k] = S.cfg[k]; }); save('list', o); }
 /* the saved lists, each with the name the user gave it; S.cfg always holds a copy of the active one */
 var ENTRY_KEYS = ['type', 'server', 'user', 'pass', 'm3u'];
-S.lists = load('lists', null); S.listOn = load('listOn', null); S.draft = null;
+S.lists = load('lists', null); S.listOn = load('listOn', null); S.draft = null; S.setSec = 'lists';
 if (!S.lists) {
   S.lists = [];
   if (S.cfg.server || S.cfg.m3u) { var first = { id: 'l1', name: 'Minha Lista' }; ENTRY_KEYS.forEach(function (k) { first[k] = S.cfg[k]; }); S.lists.push(first); S.listOn = first.id; save('lists', S.lists); save('listOn', S.listOn); }
@@ -1121,37 +1121,52 @@ function doSearch(text) {
   paint(wrap, html || '<div class="empty">Nada Encontrado para "' + esc(text) + '".</div>');
 }
 
-function renderSettings() {
+/* Ajustes: sections on the left, the chosen one on the right. Moving over a section shows it, OK or right enters it */
+var SET_SECS = [['lists', 'Listas'], ['channels', 'Canais'], ['av', 'Áudio e Legenda'], ['library', 'Filmes e Séries'], ['adult', 'Conteúdo Adulto'], ['about', 'Sobre o App']];
+function setPanel(sec) {
   var c = S.cfg;
   function seg(name, opts) { return '<div class="row seg">' + opts.map(function (o) { return '<button class="f btn' + (c[name] === o[0] ? ' on' : '') + '" data-seg="' + name + '" data-val="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div>'; }
   function row(label, html) { return '<div class="setrow"><span class="setlabel">' + label + '</span>' + html + '</div>'; }
-  $('#content').innerHTML = '<div class="scroll"><div class="form sets">' +
-    '<h2 class="settitle">Listas</h2>' +
-    (S.lists.length ? S.lists.map(listRow).join('') : '<p class="note">Nenhuma Lista Adicionada</p>') +
-    '<div class="row"><button class="f btn primary" id="openRemote">Adicionar pelo Celular</button><button class="f btn" id="newList">Digitar uma Lista</button>' + (S.lists.length ? '<button class="f btn" id="reload">Recarregar Lista</button>' : '') + '</div>' +
-    (S.draft ? listForm(S.draft) : '') +
-    '<h2 class="settitle">Canais</h2>' +
+  function keys(names) {
+    return KEY_FIELDS.filter(function (k) { return names.indexOf(k[0]) >= 0; }).map(function (k) { return '<label>' + k[1] + '</label><input class="f inp" readonly id="k_' + k[0] + '" type="password" value="' + esc(c[k[0]]) + '" style="width:100%">'; }).join('') +
+      '<div class="row"><button class="f btn" id="saveKeys">Salvar Chaves</button></div>';
+  }
+  if (sec === 'lists') {
+    if (S.draft) return listForm(S.draft);
+    return '<h2 class="settitle">Listas</h2>' + (S.lists.length ? S.lists.map(listRow).join('') : '<p class="note">Nenhuma Lista Adicionada</p>') +
+      '<div class="row"><button class="f btn primary" id="openRemote">Adicionar pelo Celular</button><button class="f btn" id="newList">Digitar uma Lista</button>' + (S.lists.length ? '<button class="f btn" id="reload">Recarregar Lista</button>' : '') + '</div>';
+  }
+  if (sec === 'channels') return '<h2 class="settitle">Canais</h2>' +
     row('Qualidade', seg('quality', [['all', 'Todas'], ['fhd265', 'Priorizar FHD H.265'], ['h265', 'Só H.265']])) +
-    row('Formato', seg('liveFormat', [['m3u8', 'HLS'], ['ts', 'TS']])) +
-    '<h2 class="settitle">Áudio e Legenda</h2>' +
+    row('Formato', seg('liveFormat', [['m3u8', 'HLS'], ['ts', 'TS']]));
+  if (sec === 'av') return '<h2 class="settitle">Áudio e Legenda</h2>' +
     row('Áudio Preferido', seg('prefAudio', [['pt', 'Português'], ['en', 'Inglês'], ['', 'Padrão do Vídeo']])) +
     row('Legenda Preferida', seg('prefSub', [['pt-br', 'Português'], ['en', 'Inglês']])) +
-    '<h2 class="settitle">Filmes e Séries</h2>' +
+    '<h2 class="settitle">Chaves de Legenda</h2>' + keys(['wyzieKey', 'osKey']);
+  if (sec === 'library') return '<h2 class="settitle">Filmes e Séries</h2>' +
     row('Classificação', '<button class="f btn dropbtn" id="rateSrc"><span>' + esc(rateLabel()) + '</span><i></i></button>') +
     row('Histórico', '<button class="f btn" id="clearSeen">Limpar Assistidos</button>') +
-    '<h2 class="settitle">Chaves de Notas e Legendas</h2>' +
-    KEY_FIELDS.map(function (k) { return '<label>' + k[1] + '</label><input class="f inp" readonly id="k_' + k[0] + '" type="password" value="' + esc(c[k[0]]) + '" style="width:100%">'; }).join('') +
-    '<div class="row"><button class="f btn" id="saveKeys">Salvar Chaves</button></div>' +
-    '<h2 class="settitle">Atualização</h2>' +
+    '<h2 class="settitle">Chaves de Notas</h2>' + keys(['tmdbKey', 'omdbKey']);
+  if (sec === 'adult') return '<h2 class="settitle">Conteúdo Adulto</h2>' +
+    '<div class="row"><button class="f btn" id="adultLock">Bloqueio com Senha: ' + (c.adultLock ? 'ligado' : 'desligado') + '</button><button class="f btn" id="adultPin">Trocar Senha</button></div>';
+  return '<h2 class="settitle">Sobre o App</h2>' +
     row('Versão ' + APP_VERSION, '<button class="f btn" id="checkUpdate">Verificar Atualização</button>') +
-    '<h2 class="settitle">Conteúdo Adulto</h2>' +
-    '<div class="row"><button class="f btn" id="adultLock">Bloqueio com Senha: ' + (c.adultLock ? 'ligado' : 'desligado') + '</button><button class="f btn" id="adultPin">Trocar Senha</button></div>' +
-    '<p class="note">Tudo Fica Salvo Só na TV. O App É Apenas um Player: Ele Não Fornece Canais Nem Conteúdo.</p>' +
-    '</div></div>';
+    '<p class="note">Tudo Fica Salvo Só na TV. O App É Apenas um Player: Ele Não Fornece Canais Nem Conteúdo.</p>';
 }
+function renderSettings() {
+  $('#content').innerHTML = '<div class="setwrap"><div class="setnav">' + SET_SECS.map(function (s) { return '<button class="f btn setsec' + (s[0] === S.setSec ? ' on' : '') + '" data-sec="' + s[0] + '">' + s[1] + '</button>'; }).join('') +
+    '</div><div class="scroll setscroll"><div class="form sets" id="setMain">' + setPanel(S.setSec) + '</div></div></div>';
+}
+function showSec(sec) {
+  if (sec === S.setSec) return;
+  S.setSec = sec; S.draft = null;
+  $$('.setsec').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-sec') === sec); });
+  $('#setMain').innerHTML = setPanel(sec); $('.setscroll').scrollTop = 0;
+}
+function focusPanel() { var f = $('#setMain .f'); if (f) focusEl(f); }
 /* update on request: same check the shell runs in the background (casca/casca-update.js), then reopens on the new copy.
  * It lives here because this file updates over the air and the shell only with a new .ipk */
-var APP_VERSION = '2.2.3';
+var APP_VERSION = '2.3.0';
 function hashText(t) { var h = 2166136261; for (var i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(16); }
 function storeCopy(copy) {
   return new Promise(function (res, rej) {
@@ -1220,9 +1235,9 @@ function listForm(d) {
     '<div class="row"><button class="f btn primary" id="listUse">Salvar e Usar Esta Lista</button><button class="f btn" id="listSave">Salvar</button>' +
     (d.id && d.id !== S.listOn ? '<button class="f btn" id="listDel">Excluir</button>' : '') + '<button class="f btn" id="listCancel">Cancelar</button></div></div>';
 }
-function openDraft(d) { S.draft = d; if (S.view === 'settings') renderSettings(); else go('settings'); $('#l_name').focus(); }
+function openDraft(d) { if (S.view !== 'settings') go('settings'); S.setSec = 'lists'; S.draft = d; renderSettings(); focusEl($('#l_name')); }
 function newDraft() { return { id: null, name: '', type: 'xtream', server: '', user: '', pass: '', m3u: '' }; }
-function closeDraft() { S.draft = null; renderSettings(); focusContent(); }
+function closeDraft() { S.draft = null; renderSettings(); focusPanel(); }
 function saveDraft(use) {
   var d = S.draft, v = function (id) { var e = $('#' + id); return e ? e.value.trim() : ''; }, l = { name: v('l_name') };
   if (!l.name) { toast('Dê um Nome à Lista'); $('#l_name').focus(); return; }
@@ -1240,7 +1255,7 @@ function saveDraft(use) {
   else { cur = Object.assign({ id: 'l' + Date.now() }, l); S.lists.push(cur); }
   save('lists', S.lists); S.draft = null;
   if (use || cur.id === S.listOn || !S.listOn) { activateList(cur.id); return; }
-  renderSettings(); focusContent(); toast('Lista Salva');
+  renderSettings(); focusPanel(); toast('Lista Salva');
 }
 function setActive(id) {
   var l = S.lists.filter(function (x) { return x.id === id; })[0];
@@ -1281,7 +1296,7 @@ function clock() {
 }
 setInterval(clock, 20000);
 
-function focusContent() { if (restoreSpot()) return; var f = $('#content .ch') || $('#content .grp.active') || $('#content .grp') || $('#content .poster') || $('#content .inp') || $('#content .f'); if (f) f.focus(); else focusNav(); }
+function focusContent() { if (S.view === 'settings') { $('.setsec.on').focus(); return; } if (restoreSpot()) return; var f = $('#content .ch') || $('#content .grp.active') || $('#content .grp') || $('#content .poster') || $('#content .inp') || $('#content .f'); if (f) f.focus(); else focusNav(); }
 function go(view) {
   stopTv();
   S.view = view;
@@ -1302,7 +1317,7 @@ function go(view) {
   else if (view === 'movies' || view === 'series') renderLibrary(view);
   else if (view === 'favorites') renderFavorites();
   else if (view === 'search') renderSearch();
-  else if (view === 'settings') renderSettings();
+  else if (view === 'settings') { S.setSec = 'lists'; S.draft = null; renderSettings(); }
 }
 
 /* ================= detail (movie / series) ================= */
@@ -2193,6 +2208,10 @@ function move(dir) {
       if (col._items && col._shown < col._items.length && !mine.some(function (el) { return el.getBoundingClientRect().top >= box.bottom - 4; })) { growGrid(col); els = $$('.f', col).filter(visible); }
     } else if (mine.some(function (el) { return el.getBoundingClientRect().bottom <= box.top + 4; })) els = mine;
   }
+  if (cur.classList.contains('setsec')) {
+    if (dir === 'right') { focusPanel(); return; }
+    if (dir === 'up' || dir === 'down') els = $$('.setsec');
+  }
   var a = cur.getBoundingClientRect(), ax = a.left + a.width / 2, ay = a.top + a.height / 2, best = null, bs = Infinity;
   els.forEach(function (el) {
     if (el === cur) return;
@@ -2201,14 +2220,15 @@ function move(dir) {
     else if (dir === 'right') { if (r.left < a.right - 4) return; p = dx; s2 = Math.abs(dy); }
     else if (dir === 'up') { if (r.bottom > a.top + 4) return; p = -dy; s2 = Math.abs(dx); }
     else { if (r.top < a.bottom - 4) return; p = dy; s2 = Math.abs(dx); }
-    // a wide box and the row next to it count as straight ahead, and the row is entered by its first button
-    if ((dir === 'up' || dir === 'down') && (cur.matches('.inp, .listname') || el.matches('.inp, .listname')) && r.left < a.right && r.right > a.left) s2 = Math.abs(r.left - a.left) * 0.1;
+    // in Ajustes up and down go row by row, entering each row by its first button, and never leak into the sections
+    if ((dir === 'up' || dir === 'down') && cur.closest('.sets')) { if (!el.closest('.sets')) return; s2 = Math.abs(r.left - a.left) * 0.1; }
     var sc2 = p + s2 * 2.5; if (sc2 < bs) { bs = sc2; best = el; }
   });
   if (!best) return;
   // entering the sidebar or category list: land on the active entry
   if (!cur.classList.contains('nav') && best.classList.contains('nav')) best = $('.nav.active') || best;
   else if (!cur.classList.contains('grp') && best.classList.contains('grp') && $('.grp.active')) best = $('.grp.active');
+  else if (!cur.classList.contains('setsec') && best.classList.contains('setsec')) best = $('.setsec.on');
   focusEl(best);
 }
 /* each screen and each group remembers its selected item; focusEl centers it, so the scroll comes back with it */
@@ -2298,6 +2318,8 @@ function onBack() {
   if (pickOpen()) { closePick(); return; }
   if (!$('#remote').classList.contains('hidden')) { closeRemote(); return; }
   if (!$('#detail').classList.contains('hidden')) { closeDetail(); return; }
+  if (S.draft) { closeDraft(); return; }
+  if (S.view === 'settings' && ed && ed.closest('.sets')) { $('.setsec.on').focus(); return; }
   if ((S.view === 'live' || S.view === 'football') && S.cat[S.view] && S.cat[S.view] !== '__groups') { backToGroups(S.view); return; }
   var cur = document.activeElement, grp = $('#libGroups .grp.active') || $('#libGroups .grp');
   if (grp && cur && (cur.id === 'libQ' || cur.closest('#gridWrap'))) {
@@ -2391,6 +2413,7 @@ document.addEventListener('click', function (e) {
   if (t.hasAttribute('data-clear')) { if (t.getAttribute('data-clear') === '0') closePick(); else clearSeen(t.getAttribute('data-clear')); return; }
   if (t.hasAttribute('data-choose')) { var cf = $('#pick')._choose, cv = t.getAttribute('data-choose'); closePick(); cf(cv); return; }
   if (t.id === 'rateSrc') { pickRateSrc(); return; }
+  if (t.hasAttribute('data-sec')) { showSec(t.getAttribute('data-sec')); focusPanel(); return; }
   if (t.id === 'newList') { openDraft(newDraft()); return; }
   if (t.hasAttribute('data-list')) { openDraft(JSON.parse(JSON.stringify(S.lists.filter(function (x) { return x.id === t.getAttribute('data-list'); })[0]))); return; }
   if (t.hasAttribute('data-use')) { activateList(t.getAttribute('data-use')); return; }
@@ -2445,7 +2468,7 @@ document.addEventListener('click', function (e) {
     } else openDetail(item);
   }
 });
-document.addEventListener('focusin', function (e) { noteSpot(e.target); });
+document.addEventListener('focusin', function (e) { noteSpot(e.target); if (e.target.classList && e.target.classList.contains('setsec')) showSec(e.target.getAttribute('data-sec')); });
 document.addEventListener('input', function (e) { if (e.target.id === 'libQ') typedSearch(e.target.value); });
 document.addEventListener('focusout', function (e) { if (e.target.matches && e.target.matches('input.inp')) e.target.readOnly = true; });
 // the keyboard closed by its own buttons: lock the box again so the arrows keep navigating
