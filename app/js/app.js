@@ -948,7 +948,7 @@ function closePick() {
 }
 function paintGames() {
   var w = $('#gamesWrap'); if (!w) return;
-  if (G.list === null) { w.innerHTML = '<div class="empty">Buscando os Jogos…</div>'; return; }
+  if (G.list === null) { w.innerHTML = '<div class="empty">Buscando os Jogos</div>'; return; }
   if (G.filter === 'rem') { paintReminders(w); return; }
   if (G.failed) { w.innerHTML = '<div class="empty">Não Consegui Buscar os Jogos Agora.<br>Confira a Internet da TV; Vou Tentar de Novo Sozinho.</div>'; return; }
   var active = document.activeElement && document.activeElement.getAttribute('data-game'), order = { 'in': 0, pre: 1, post: 2 }, html = '', leagues = [];
@@ -1151,7 +1151,7 @@ function renderSettings() {
 }
 /* update on request: same check the shell runs in the background (casca/casca-update.js), then reopens on the new copy.
  * It lives here because this file updates over the air and the shell only with a new .ipk */
-var APP_VERSION = '2.2.1';
+var APP_VERSION = '2.2.2';
 function hashText(t) { var h = 2166136261; for (var i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(16); }
 function storeCopy(copy) {
   return new Promise(function (res, rej) {
@@ -1316,7 +1316,7 @@ function openDetail(item) {
     '<div class="dtop"><p class="eyebrow" id="dMeta">' + esc([item.kind === 'movie' ? 'FILME' : 'SÉRIE', item.year, item.catName].filter(Boolean).join(' · ')) + '</p><span class="dload" id="dLoad"><i class="spin sm"></i>Carregando Informações</span></div>' +
     '<h1>' + esc(item.name) + '</h1><div class="ratings" id="dRatings">' + (listRate(cachedRating(item), item) ? '<span class="pill">Lista ' + (+item.rating).toFixed(1) + '</span>' : '') + '</div>' +
     '<div class="plot" id="dPlot">' + esc(item.plot || '') + '</div>' +
-    '<div class="row"><button class="f bigbtn" id="dPlay">' + (item.kind === 'series' && !h ? 'Carregando…' : '▶ ' + (h ? 'Continuar' : 'Assistir')) + '</button>' +
+    '<div class="row"><button class="f bigbtn" id="dPlay">' + (item.kind === 'series' && !h ? 'Carregando' : '▶ ' + (h ? 'Continuar' : 'Assistir')) + '</button>' +
     '<button class="f dbtn" id="dLater">' + laterLabel(key) + '</button><button class="f dbtn" id="dFav">' + favLabel(key) + '</button></div></div>' +
     (item.kind === 'series' ? '<div class="dlower"><div class="seasons" id="dSeasons" role="tablist" aria-label="Temporadas"></div><div class="episodes scroll" id="dEps"><div class="dwait"><i class="spin sm"></i>Carregando Episódios</div></div></div>' : '');
   d.classList.remove('hidden'); d._item = item; d._eps = null; d._from = lastFocus;
@@ -1624,7 +1624,7 @@ function upgradeToHls(then) {
   P.seek = isFinite(video.duration) ? video.currentTime : null; P.resumed = false;
   P.cur = { url: P.cur.url, mode: 'hls', label: P.cur.label };
   spinner(true); startStream(P.cur);
-  closeMenu(); toast('Procurando Faixas…');
+  closeMenu(); toast('Procurando Faixas');
   if (then) setTimeout(then, 2500);
 }
 
@@ -1708,7 +1708,7 @@ function epgFor(item, limit) {
   return tryAt(0);
 }
 function loadEPG(item) {
-  epgEmpty('Carregando Programação…');
+  epgEmpty('Carregando Programação');
   if (S.cfg.type !== 'xtream') { epgEmpty('Esta Lista Não Traz Programação.'); return; }
   epgFor(item, 6).then(function (l) {
     if (P.item !== item) return;
@@ -1982,7 +1982,7 @@ function retime(cues, ref) {
 function autoSub(lang, quiet) {
   var item = P.item, ep = P.ep, d = video.duration;
   if (!isFinite(d)) return;
-  if (!quiet) menu('Procurando a Melhor Legenda…', []);
+  if (!quiet) menu('Procurando a Melhor Legenda', []);
   wyzieList(lang).then(function (list) {
     var tries = list.filter(subBd).slice(0, 3).concat(list.filter(function (x) { return !subBd(x); }).slice(0, 2)), best = null;
     if (!tries.length) throw new Error('Nenhuma Legenda');
@@ -2027,7 +2027,7 @@ function askOpenSubs(title, lang) {
 }
 function searchOnlineSubs(lang) {
   if (!S.cfg.wyzieKey) { searchOpenSubs(lang); return; }
-  menu('Buscando Legendas…', []);
+  menu('Buscando Legendas', []);
   wyzieList(lang).then(function (list) {
     var res = list.slice(0, 14);
     if (!res.length) { askOpenSubs('O Wyzie Não Achou Legenda Deste Título', lang); return; }
@@ -2040,7 +2040,7 @@ function searchOnlineSubs(lang) {
 }
 function downloadWyzie(x) {
   var id = 'w' + x.id, label = x.release || x.display || 'online';
-  menu('Baixando Legenda…', []);
+  menu('Baixando Legenda', []);
   wyzieText(x)
     .then(function (txt) { S.subs.files[id] = { text: txt, label: label, at: Date.now() }; setTrk('sub', String(x.language || 'pt').slice(0, 2)); useExtSubs(txt, label, id); closeMenu(); toast('Legenda Carregada do Wyzie'); })
     .catch(function (e) { menu('Erro: ' + e.message, [{ name: 'Voltar', fn: subsMenu }], subsMenu); });
@@ -2050,7 +2050,7 @@ function searchOpenSubs(lang) {
   var ct = cleanTitle(P.item.name), q = '&query=' + encodeURIComponent(ct.title);
   if (P.ep) q += '&season_number=' + P.ep.season + '&episode_number=' + P.ep.num + '&type=episode';
   else { q += '&type=movie'; if (P.item.year || ct.year) q += '&year=' + (P.item.year || ct.year); }
-  menu('Buscando Legendas…', []);
+  menu('Buscando Legendas', []);
   getJSON(OS + '/subtitles?languages=' + lang + q, { headers: osHeaders() }).then(function (r) {
     var res = (r.data || []).slice(0, 14);
     if (!res.length) { menu('Nenhuma Legenda Encontrada', [{ name: 'Voltar', fn: subsMenu }]); return; }
@@ -2064,7 +2064,7 @@ function searchOpenSubs(lang) {
 function downloadSub(fileId, label) {
   var had = S.subs.files[fileId];
   if (had) { useExtSubs(had.text, had.label, fileId); closeMenu(); return; }
-  menu('Baixando Legenda…', []);
+  menu('Baixando Legenda', []);
   getJSON(OS + '/download', { method: 'POST', headers: osHeaders(), body: JSON.stringify({ file_id: fileId, sub_format: 'srt' }) })
     .then(function (r) { if (!r.link) throw new Error(r.message || 'limite diário atingido'); P.subsLeft = r.remaining; return timeoutFetch(r.link, {}, 30000); })
     .then(function (r) { return r.text(); })
@@ -2201,8 +2201,8 @@ function move(dir) {
     else if (dir === 'right') { if (r.left < a.right - 4) return; p = dx; s2 = Math.abs(dy); }
     else if (dir === 'up') { if (r.bottom > a.top + 4) return; p = -dy; s2 = Math.abs(dx); }
     else { if (r.top < a.bottom - 4) return; p = dy; s2 = Math.abs(dx); }
-    // from a wide box the next row counts as straight ahead, even with its buttons at the left end
-    if ((dir === 'up' || dir === 'down') && a.width > 500 && r.left < a.right && r.right > a.left) s2 *= 0.1;
+    // a wide box and the row next to it count as straight ahead, even with the buttons at the left end
+    if ((dir === 'up' || dir === 'down') && (cur.matches('.inp, .listname') || el.matches('.inp, .listname')) && r.left < a.right && r.right > a.left) s2 *= 0.1;
     var sc2 = p + s2 * 2.5; if (sc2 < bs) { bs = sc2; best = el; }
   });
   if (!best) return;
@@ -2476,7 +2476,7 @@ var configured = S.cfg.server || S.cfg.m3u;
 go(configured ? 'home' : 'settings');
 setTimeout(function () { if (S.loadError) return; if (S.view === 'home') focusNav(); else focusContent(); }, 50);
 if (configured) {
-  setBusy(after ? 'Atualizando: Recarregando a Lista…' : 'Carregando Sua Lista…');
+  setBusy(after ? 'Atualizando: Recarregando a Lista…' : 'Carregando Sua Lista');
   loadAll().then(function () {
     S.fresh = false;
     setBusy('');
