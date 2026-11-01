@@ -795,6 +795,13 @@ function channelsNamed(name) {
   var c = compact(name), exact = [], partial = [];
   c = CH_ALIAS[c] || c;
   if (G.chMap[c]) return G.chMap[c];
+  // Globo is open TV and a list has one per city (Globo SP, Globo Ceará...): only the 4K one is offered
+  if (c === 'globo' || c === 'tvglobo') {
+    return (G.chMap[c] = S.live.filter(function (it) {
+      var b = compact(channelBase(it.name));
+      return !it.adult && isUhd(it.name) && (b.indexOf('globo') === 0 || b.indexOf('tvglobo') === 0) && !/^(tv)?globo(news|play)/.test(b);
+    }));
+  }
   S.live.forEach(function (it) { if (it.adult) return; var n = it._c || (it._c = compact(it.name)); if (n === c) exact.push(it); else if (n.indexOf(c) === 0) partial.push(it); });
   return (G.chMap[c] = exact.concat(partial));
 }
