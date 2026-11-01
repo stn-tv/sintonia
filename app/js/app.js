@@ -132,40 +132,6 @@ function cleanTitle(name) {
   return { title: t || name, year: year };
 }
 
-/* ================= football detection ================= */
-var BALL_BRANDS = [
-  ['Premiere', /premiere/],
-  ['SporTV', /sportv|sport tv/],
-  ['Globo', /\bglobo\b(?!\s*news)|\btv globo\b|\brede globo\b/],
-  ['ESPN', /espn/],
-  ['TNT Sports / Max', /tnt ?sports|\bmax\b|hbo max/],
-  ['CazéTV', /caze ?tv|\bcaze\b/],
-  ['Band', /band ?sports?|\bband\b/],
-  ['Paramount+', /paramount/],
-  ['Prime Video', /prime ?video|amazon/],
-  ['DAZN / OneFootball', /dazn|onefootball/],
-  ['Outros esportes', /\bge ?tv\b|goat|xsports|nosso futebol|futebol|soccer|brasileir|libertadores|sul-?americana|copa do brasil|champions|premier league|la ?liga|serie a|ppv/]
-];
-var BALL_EXCLUDE = /news|noticia|novela|kids|infantil|filme|movie|series|xxx|adult|music|radio/;
-var BALL_GROUP = /futebol|esporte|sport|premiere|ppv|jogos|campeonato|brasileir/;
-var MATCH_RE = /\s(x|vs\.?|v)\s/i;
-function ballBrand(item) {
-  var n = norm(item.name), g = norm(item.catName);
-  if (BALL_EXCLUDE.test(n)) return null;
-  if (MATCH_RE.test(item.name) && BALL_GROUP.test(g)) return 'Jogos / eventos';
-  for (var i = 0; i < BALL_BRANDS.length; i++) {
-    if (BALL_BRANDS[i][1].test(n)) {
-      // generic brands like "Band", "Globo", "Max" only count when the group is sport-ish or the name says sports
-      if (/^(Band|Globo|TNT Sports \/ Max|Prime Video)$/.test(BALL_BRANDS[i][0]) && !BALL_GROUP.test(g) && !/sport|esporte/.test(n)) {
-        if (BALL_BRANDS[i][0] !== 'Globo') continue;
-      }
-      return BALL_BRANDS[i][0];
-    }
-  }
-  if (BALL_GROUP.test(g) && /futebol|soccer|premiere|brasileir/.test(g)) return 'Outros esportes';
-  return null;
-}
-
 /* ================= channel quality ================= */
 function isUhd(name) { return /(^|[^0-9])4k(?![a-z])|uhd/i.test(name); }
 function quality(name) {
@@ -362,7 +328,6 @@ function loadAll() {
     keepList();
     groupChannels();
     markAdult();
-    S.live.forEach(function (it) { it.ball = it.adult ? null : ballBrand(it); });
     status(S.live.length + ' Canais · ' + S.movies.length + ' Filmes · ' + S.series.length + ' Séries');
   });
 }
@@ -475,14 +440,14 @@ function resume(h) {
 }
 
 /* ================= rendering ================= */
-var TITLES = { home: '', games: 'Jogos do Dia', live: 'Ao Vivo', football: 'Futebol', movies: 'Filmes', series: 'Séries', favorites: 'Favoritos', search: 'Buscar', settings: 'Ajustes' };
+var TITLES = { home: '', games: 'Jogos do Dia', live: 'Ao Vivo', movies: 'Filmes', series: 'Séries', favorites: 'Favoritos', search: 'Buscar', settings: 'Ajustes' };
 var CHUNK = window.ATL_CHUNK || 49;
 
 function chHTML(it, idx) {
   var key = it.kind + ':' + it.id, q = it.variants && it.variants[0].q ? it.variants[0].q.label : '';
   return '<button class="f ch' + (P.tv && P.item === it ? ' playing' : '') + '" data-key="' + key + '" data-idx="' + idx + '">' + logoBox(it) +
     '<div><div class="name">' + esc(it.name) + '<span class="marks">' + marks(key) + '</span></div>' +
-    '<div class="sub">' + (q ? '<span class="qual">' + esc(q) + '</span>' : '') + (it.ball ? '<span class="badge-ball">' + esc(it.ball) + '</span>' : esc(it.catName)) + '</div></div></button>';
+    '<div class="sub">' + (q ? '<span class="qual">' + esc(q) + '</span>' : '') + esc(it.catName) + '</div></div></button>';
 }
 /* each version of a channel brings its own logo: when one link is dead, the next one is tried */
 function bankLogo(name) {
@@ -538,13 +503,13 @@ function growGrid(grid, upTo) {
 
 function renderHome() {
   var list = S.hist.filter(function (h) { return S.byKey[h.key]; }), h = list[0], rest = list.slice(1, 4);
-  var balls = S.live.filter(function (i) { return i.ball; }).length, r = h && cachedRating(S.byKey[h.key]);
+  var r = h && cachedRating(S.byKey[h.key]);
   var html = '<section class="hero-row">';
   if (h) html += '<div class="hero">' + (r && r.backdrop ? '<img class="lz" alt="" data-src="' + esc(thumb(r.backdrop, 1280)) + '">' : '') + '<div class="hero-shade"></div><div class="hero-body">' +
     '<p class="kicker">CONTINUAR</p><h2>' + esc(h.name) + '</h2><p class="hero-sub">' + esc([h.ep ? 'Temporada ' + h.ep.season + ' · Episódio ' + h.ep.num : '', histLeft(h)].filter(Boolean).join(' · ')) + '</p>' +
     '<div class="hero-act"><button class="f bigbtn" data-hist="' + esc(h.key) + '">▶ Continuar</button><div class="prog"><div style="width:' + histPct(h) + '%"></div></div></div></div></div>';
   else html += '<div class="hero"><div class="hero-body"><p class="kicker">BEM-VINDO</p><h2>Nada em Andamento</h2><p class="hero-sub">Escolha um Filme ou Série para Começar.</p><div class="hero-act"><button class="f bigbtn" data-go="movies">Ver Filmes</button></div></div></div>';
-  html += '<div class="side"><button class="f card ball" data-go="football"><span class="kicker green">FUTEBOL</span><strong>' + (balls ? balls + ' Canais' : 'Sem Canais') + '</strong><span class="muted">Premiere, SporTV, ESPN e Outros</span></button>' +
+  html += '<div class="side"><button class="f card ball" data-go="games"><span class="kicker green">JOGOS DO DIA</span><strong>Placares e Canais</strong><span class="muted">Ao Vivo, Próximos e Lembretes</span></button>' +
     '<button class="f card later" data-go="favorites"><strong>Assistir Depois</strong><span class="muted">' + S.later.length + ' Títulos</span></button></div></section>';
   if (rest.length) {
     html += '<h2 class="section-title">Assistido Recentemente</h2><section class="recent">';
@@ -560,19 +525,14 @@ function renderHome() {
 }
 
 function liveItems(view, cat) {
-  var list = view === 'football' ? S.live.filter(function (i) { return i.ball; }) : S.live;
+  var list = S.live;
   if (cat === '__all') return list.filter(noAdult);
   if (cat === '__fav') return list.filter(function (i) { return !i.adult && isFav(i.kind + ':' + i.id); });
-  if (cat.indexOf('b:') === 0) return list.filter(function (i) { return i.ball === cat.slice(2); });
   return list.filter(function (it) { return it.cat === cat; });
 }
 /* large lists have many groups: the left column shows groups first, channels only after one is chosen */
 function groupRows(view) {
   var n = {}, rows = [{ cat: '__all', name: 'Todos os Canais', n: liveItems(view, '__all').length }, { cat: '__fav', name: 'Favoritos', n: liveItems(view, '__fav').length }];
-  if (view === 'football') {
-    S.live.forEach(function (i) { if (i.ball) n[i.ball] = (n[i.ball] || 0) + 1; });
-    return rows.concat(Object.keys(n).map(function (b) { return { cat: 'b:' + b, name: b, n: n[b] }; }));
-  }
   S.live.forEach(function (i) { n[i.cat] = (n[i.cat] || 0) + 1; });
   S.liveCats.forEach(function (c) { var id = String(c.category_id); if (n[id]) rows.push({ cat: id, name: c.category_name, n: n[id], adult: catIsAdult(c.category_name) }); });
   return rows;
@@ -649,7 +609,7 @@ function itemsFor(kind, cat) {
 /* channel screen: filters and list on the left; preview and programme guide on the right */
 function renderChannels(view) {
   if (groupAdult(view, S.cat[view])) S.cat[view] = '__groups';
-  var sel = S.cat[view] || '__groups', html = '<div class="tv"><div class="tvleft"><div class="tvhead"><h1>' + TITLES[view] + '</h1>' + (view === 'football' ? '<button class="f tvrefresh" data-go="games">Jogos e Lembretes</button>' : '') + '<button class="f tvrefresh" id="refreshBtn">Atualizar</button></div>';
+  var sel = S.cat[view] || '__groups', html = '<div class="tv"><div class="tvleft"><div class="tvhead"><h1>' + TITLES[view] + '</h1>' + '<button class="f tvrefresh" id="refreshBtn">Atualizar</button></div>';
   html += '<p class="tvpath" id="tvPath"></p><div class="scroll grid-wrap" id="gridWrap"></div></div><div class="tvright"><div class="pvslot"></div><h2 id="pvName">Escolha um Canal</h2><p class="muted" id="pvHint">OK Mostra a Prévia. OK de Novo Abre em Tela Cheia.</p><div id="epgList"></div></div></div>';
   $('#content').innerHTML = html;
   showCat(view, sel);
@@ -715,7 +675,7 @@ function showCat(kind, cat) {
   if (cat !== S.cat[kind]) S.q = '';
   S.cat[kind] = cat; S.spotOff = groupAdult(kind, cat);
   $$('.grp').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-grp') === cat); });
-  var wrap = $('#gridWrap'), tv = kind === 'live' || kind === 'football'; wrap.scrollTop = 0;
+  var wrap = $('#gridWrap'), tv = kind === 'live'; wrap.scrollTop = 0;
   if (cat === '__groups') { var rows = groupRows(kind); mountGrid(wrap, rows, 'chlist', grpHTML); setText('#tvPath', pathLabel(kind, cat, rows.length)); return; }
   var inp = $('#libQ'), active = $('.grp.active span');
   if (inp) { inp.value = S.q || ''; inp.placeholder = 'Pesquisar em ' + (active ? active.textContent : 'Todos'); }
@@ -1166,7 +1126,7 @@ function showSec(sec) {
 function focusPanel() { var f = $('#setMain .f'); if (f) focusEl(f); }
 /* update on request: same check the shell runs in the background (casca/casca-update.js), then reopens on the new copy.
  * It lives here because this file updates over the air and the shell only with a new .ipk */
-var APP_VERSION = '2.3.3';
+var APP_VERSION = '2.4.0';
 function hashText(t) { var h = 2166136261; for (var i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(16); }
 function storeError(err) { return new Error(err && err.name === 'QuotaExceededError' ? 'Sem Espaço para o App' : 'Falha ao Gravar' + (err && err.name ? ' (' + err.name + ')' : '')); }
 function storeCopy(copy, again) {
@@ -1308,7 +1268,7 @@ function go(view) {
   S.view = view;
   // the main menu only lives on Início; each section takes the whole screen
   $('#app').classList.toggle('norail', view !== 'home');
-  $('#app').classList.toggle('tvview', view === 'live' || view === 'football');
+  $('#app').classList.toggle('tvview', view === 'live');
   $$('.nav').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-view') === view); });
   $('#viewTitle').textContent = view === 'home' ? greeting() : TITLES[view];
   if (view === 'games') { renderGames(); status(''); return; }
@@ -1319,7 +1279,7 @@ function go(view) {
   }
   if (S.loaded && view !== 'home') status(S.live.length + ' Canais · ' + S.movies.length + ' Filmes · ' + S.series.length + ' Séries');
   if (view === 'home') { renderHome(); clock(); }
-  else if (view === 'live' || view === 'football') renderChannels(view);
+  else if (view === 'live') renderChannels(view);
   else if (view === 'movies' || view === 'series') renderLibrary(view);
   else if (view === 'favorites') renderFavorites();
   else if (view === 'search') renderSearch();
@@ -2218,7 +2178,12 @@ function move(dir) {
     if (dir === 'right') { focusPanel(); return; }
     if (dir === 'up' || dir === 'down') els = $$('.setsec');
   }
-  var a = cur.getBoundingClientRect(), ax = a.left + a.width / 2, ay = a.top + a.height / 2, best = null, bs = Infinity;
+  var a0 = cur.getBoundingClientRect(), row = cur.classList.contains('game') && (dir === 'up' || dir === 'down');
+  if (row) {
+    var more = els.filter(function (el) { var q = el.getBoundingClientRect(); return el.classList.contains('game') && (dir === 'up' ? q.bottom <= a0.top + 4 : q.top >= a0.bottom - 4); });
+    if (more.length) els = more;
+  }
+  var a = a0, ax = a.left + a.width / 2, ay = a.top + a.height / 2, best = null, bs = Infinity;
   els.forEach(function (el) {
     if (el === cur) return;
     var r = el.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2, dx = x - ax, dy = y - ay, p, s2;
@@ -2228,6 +2193,7 @@ function move(dir) {
     else { if (r.top < a.bottom - 4) return; p = dy; s2 = Math.abs(dx); }
     // in Ajustes up and down go row by row, entering each row by its first button, and never leak into the sections
     if ((dir === 'up' || dir === 'down') && cur.closest('.sets')) { if (!el.closest('.sets')) return; s2 = Math.abs(r.left - a.left) * 0.1; }
+    if (row) s2 *= 0.02; // leagues with fewer games: the nearest row wins, even with its cards off to one side
     var sc2 = p + s2 * 2.5; if (sc2 < bs) { bs = sc2; best = el; }
   });
   if (!best) return;
@@ -2242,7 +2208,7 @@ var SPOT_ATTRS = ['data-game', 'data-hist', 'data-go', 'data-view', 'data-gf', '
 function rowId(x) { return x.kind ? x.kind + ':' + x.id : x.cat; }
 function noteSpot(el) {
   if (!el.closest || !el.closest('#app') || el.tagName === 'INPUT') return;
-  var v = S.view, lists = v === 'live' || v === 'football' || v === 'movies' || v === 'series';
+  var v = S.view, lists = v === 'live' || v === 'movies' || v === 'series';
   if (!lists) {
     for (var i = 0; i < SPOT_ATTRS.length; i++) if (el.hasAttribute(SPOT_ATTRS[i])) { S.spot[v + '|'] = { a: SPOT_ATTRS[i], v: el.getAttribute(SPOT_ATTRS[i]), i: el.getAttribute('data-idx') }; return; }
     return;
@@ -2263,7 +2229,7 @@ function spotInGrid(m) {
 }
 function restoreSpot(view, cat) {
   view = view || S.view;
-  var lists = view === 'live' || view === 'football' || view === 'movies' || view === 'series', el = null, m;
+  var lists = view === 'live' || view === 'movies' || view === 'series', el = null, m;
   if (lists) {
     if (S.spot[view + '|pane'] === 'groups' && cat == null && $('#libGroups')) el = $('.grp.active');
     else { m = S.spot[view + '|' + (cat || S.cat[view])]; if (m) el = spotInGrid(m); }
@@ -2326,7 +2292,7 @@ function onBack() {
   if (!$('#detail').classList.contains('hidden')) { closeDetail(); return; }
   if (S.draft) { closeDraft(); return; }
   if (S.view === 'settings' && ed && ed.closest('.sets')) { $('.setsec.on').focus(); return; }
-  if ((S.view === 'live' || S.view === 'football') && S.cat[S.view] && S.cat[S.view] !== '__groups') { backToGroups(S.view); return; }
+  if ((S.view === 'live') && S.cat[S.view] && S.cat[S.view] !== '__groups') { backToGroups(S.view); return; }
   var cur = document.activeElement, grp = $('#libGroups .grp.active') || $('#libGroups .grp');
   if (grp && cur && (cur.id === 'libQ' || cur.closest('#gridWrap'))) {
     if (groupAdult(S.view, S.cat[S.view])) { showCat(S.view, '__all'); grp = $('#libGroups .grp.active') || grp; }
@@ -2469,7 +2435,7 @@ document.addEventListener('click', function (e) {
     var item = S.byKey[key]; if (!item) return; lastFocus = t;
     if (item.kind === 'live') {
       var list = (t.parentNode && t.parentNode._items) || $$('[data-key^="live:"]', t.parentNode).map(function (b) { return S.byKey[b.getAttribute('data-key')]; });
-      if (S.view === 'live' || S.view === 'football') { if (P.tv && P.item === item) enterFull(); else selectChannel(item, list); }
+      if (S.view === 'live') { if (P.tv && P.item === item) enterFull(); else selectChannel(item, list); }
       else play(item, { list: list, index: Math.max(0, list.indexOf(item)) });
     } else openDetail(item);
   }
@@ -2525,5 +2491,5 @@ if (configured) {
   }, function (e) { S.fresh = false; loadFailed(e); });
 }
 
-window.__atl = { S: S, P: P, retime: retime, toSrt: toSrt, shortGroup: shortGroup, reload: reload, genCover: genCover, catIsAdult: catIsAdult, useExtSubs: useExtSubs, syncMenu: syncMenu, pickChannel: pickChannel, askResume: askResume, fetchEps: fetchEps, epTitle: epTitle, parseM3U: parseM3U, parseLink: parseLink, quality: quality, channelBase: channelBase, ballBrand: ballBrand, parseSubs: parseSubs, cleanTitle: cleanTitle, play: play, showQR: showQR, receiveList: receiveList, video: function () { return video; } };
+window.__atl = { S: S, P: P, retime: retime, toSrt: toSrt, shortGroup: shortGroup, reload: reload, genCover: genCover, catIsAdult: catIsAdult, useExtSubs: useExtSubs, syncMenu: syncMenu, pickChannel: pickChannel, askResume: askResume, fetchEps: fetchEps, epTitle: epTitle, parseM3U: parseM3U, parseLink: parseLink, quality: quality, channelBase: channelBase, parseSubs: parseSubs, cleanTitle: cleanTitle, play: play, showQR: showQR, receiveList: receiveList, video: function () { return video; } };
 })();
