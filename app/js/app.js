@@ -26,14 +26,25 @@ if (load('ratingsV', 0) < 2) { S.ratings = {}; save('ratings', {}); save('rating
 if (load('ratingsV', 0) < 3) { Object.keys(S.ratings).forEach(function (k) { var r = S.ratings[k]; if (r && r.om && !r.imdb) delete r.om; }); save('ratings', S.ratings); save('ratingsV', 3); }
 /* the notes live in IndexedDB: localStorage holds ~5 MB shared with everything else, and a full one
  * silently stopped saving them, so every visit looked them all up again */
-var notesDb = null, notesWait = [], notesLoaded = false;
+var notesDb = null, notesWait = [], notesLoaded = false, notesDone, notesReady = new Promise(function (r) { notesDone = r; });
+function notesIn() {
+  if (notesLoaded) return; notesLoaded = true; notesDone();
+  // posters drawn before the notes arrived get theirs now; "Mais Bem Avaliados" is put in order again
+  $$('.poster').forEach(function (card) { var it = S.byKey[card.getAttribute('data-key')], c = it && cachedRating(it); if (c) showRate(card, it, c); });
+  fillHero();
+  var v = S.view, f = document.activeElement;
+  if ((v === 'movies' || v === 'series') && S.sort === 'stars' && !S.q && $('#gridWrap') && !(f && f.closest && f.closest('#gridWrap') && +f.getAttribute('data-idx') > 5)) {
+    var inGrid = f && f.closest && f.closest('#gridWrap'); showCat(v, S.cat[v] || '__all');
+    if (inGrid) { var first = $('#gridWrap .poster'); if (first) focusEl(first); }
+  }
+}
 function withNotesDb(fn) {
   if (notesDb) { fn(notesDb); return; }
   notesWait.push(fn); if (notesWait.length > 1) return;
-  var req; try { req = indexedDB.open('atl-notas', 1); } catch (e) { notesWait = []; notesLoaded = true; return; }
+  var req; try { req = indexedDB.open('atl-notas', 1); } catch (e) { notesWait = []; setTimeout(notesIn, 0); return; }
   req.onupgradeneeded = function () { req.result.createObjectStore('kv'); };
   req.onsuccess = function () { notesDb = req.result; var w = notesWait; notesWait = []; w.forEach(function (f) { f(notesDb); }); };
-  req.onerror = function () { notesWait = []; notesLoaded = true; fillHero(); };
+  req.onerror = function () { notesWait = []; notesIn(); };
 }
 function saveNotes() {
   withNotesDb(function (db) {
@@ -41,17 +52,14 @@ function saveNotes() {
   });
 }
 withNotesDb(function (db) {
-  var r; try { r = db.transaction('kv', 'readonly').objectStore('kv').get('ratings'); } catch (e) { notesLoaded = true; return; }
-  r.onerror = function () { notesLoaded = true; fillHero(); };
+  var r; try { r = db.transaction('kv', 'readonly').objectStore('kv').get('ratings'); } catch (e) { notesIn(); return; }
+  r.onerror = notesIn;
   r.onsuccess = function () {
-    notesLoaded = true;
     var kept = r.result || {}, moved = Object.keys(S.ratings).length;
     Object.keys(kept).forEach(function (k) { if (!S.ratings[k]) S.ratings[k] = kept[k]; });
     if (moved) saveNotes(); // the copy that was in localStorage now lives here
     try { localStorage.removeItem('atl.ratings'); } catch (e) {}
-    // posters drawn before the notes arrived get theirs now
-    $$('.poster').forEach(function (card) { var it = S.byKey[card.getAttribute('data-key')], c = it && cachedRating(it); if (c) showRate(card, it, c); });
-    fillHero();
+    notesIn();
   };
 });
 // English became the preferred audio after this setting was already saved on the TVs
@@ -161,9 +169,9 @@ function cleanTitle(name) {
     .replace(/^\s*(\[[^\]]*\]|\|[^|]*\||[A-Z]{2,3}\s*[:|-])\s*/g, '')
     .replace(/\((19|20)\d{2}\)|\[(19|20)\d{2}\]/g, '')
     .replace(/\b(4k|uhd|fhd|hd|sd|h265|hevc|1080p|720p|dublado|legendado|dub|leg|nacional|\[l\]|\(l\))\b/ig, '')
-    .replace(/[\[\(][^\]\)]*[\]\)]/g, '').replace(/\s*[-|:]\s*$/, '').replace(/\s+/g, ' ').trim()
-    .replace(/^[^A-Za-z0-9\u00C0-\u024F]+/, ''); // lists mark titles with "+ " or "- " in front: the search would not find them
-  return { title: t || name, year: year };
+    .replace(/[\[\(][^\]\)]*[\]\)]/g, '').replace(/\s*[-|:]\s*$/, '').replace(/\s+/g, ' ').trim();
+  var bare = t.replace(/^[^A-Za-z0-9\u00C0-\u024F]+/, ''); // lists mark titles with "+ " or "- " in front: the search would not find them
+  return { title: bare || t || name, year: year, old: t || name };
 }
 
 /* ================= channel quality ================= */
@@ -379,7 +387,9 @@ function noteBr(item, r) { var k = item.kind + ':' + item.id; if (r && r.br && !
 // force: the viewer asked for something that needs the ids, even with the player open
 function getRatings(item, force) {
   if (item.kind === 'live' || item.adult) return Promise.resolve(null);
-  var ct = cleanTitle(item.name), year = item.year || ct.year, ck = item.kind + '|' + norm(ct.title) + '|' + year, had = S.ratings[ck];
+  // the saved notes come from IndexedDB a moment after the app opens: asking the internet before that would repeat them all
+  if (!notesLoaded) return notesReady.then(function () { return getRatings(item, force); });
+  var ct = cleanTitle(item.name), year = item.year || ct.year, ck = rateKey(item), had = S.ratings[ck];
   // notes saved before the IMDb key existed get looked up again
   if (had && (had.om || !S.cfg.omdbKey || !had.tmdbId)) return Promise.resolve(noteBr(item, had));
   if (playerOpen() && !force) return Promise.resolve(had || null);
@@ -417,7 +427,7 @@ function getRatings(item, force) {
       delete ratingPending[ck];
       S.ratings[ck] = o; var keys = Object.keys(S.ratings);
       if (keys.length > 20000) keys.slice(0, 2000).forEach(function (k) { delete S.ratings[k]; });
-      clearTimeout(saveT.ratings); saveT.ratings = setTimeout(saveNotes, 2000); return noteBr(item, o);
+      notesChanged(); return noteBr(item, o);
     }, function () { delete ratingPending[ck]; return out; });
   ratingPending[ck] = p; return p;
 }
@@ -520,9 +530,18 @@ function posterHTML(it, idx) {
     '<span class="ptitle">' + esc(it.name) + '</span><span class="pyear">' + esc(it.year || '') + '</span></button>';
 }
 function cachedRating(it) {
-  if (!it._rk) { var ct = cleanTitle(it.name); it._rk = it.kind + '|' + norm(ct.title) + '|' + (it.year || ct.year); }
-  return S.ratings[it._rk];
+  if (!it._rk) it._rk = rateKey(it);
+  var r = S.ratings[it._rk];
+  if (!r && notesLoaded && !it._rm) { it._rm = 1; rateKey(it); r = S.ratings[it._rk]; } // key worked out before the saved notes came in
+  return r;
 }
+/* the key a title's note is saved under; a note saved before "+ " and "- " were dropped from the name is moved over */
+function rateKey(it) {
+  var ct = cleanTitle(it.name), y = it.year || ct.year, k = it.kind + '|' + norm(ct.title) + '|' + y, was = it.kind + '|' + norm(ct.old) + '|' + y;
+  if (!S.ratings[k] && was !== k && S.ratings[was]) { S.ratings[k] = S.ratings[was]; delete S.ratings[was]; notesChanged(); }
+  return k;
+}
+function notesChanged() { clearTimeout(saveT.ratings); saveT.ratings = setTimeout(saveNotes, 2000); }
 
 /* incremental grid: renders CHUNK items, appends more as focus nears the end */
 function mountGrid(container, items, cls, tpl) {
