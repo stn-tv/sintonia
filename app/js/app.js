@@ -2416,6 +2416,11 @@ function onBack() {
   if (!$('#detail').classList.contains('hidden')) { closeDetail(); return; }
   if (S.draft) { closeDraft(); return; }
   if (S.view === 'settings' && ed && ed.closest('.sets')) { $('.setsec.on').focus(); return; }
+  // deep inside a group, Voltar first goes back to its top; from the top, it goes to the group list
+  if (ed && ed.closest && ed.closest('#gridWrap') && +ed.getAttribute('data-idx') > 0 && S.cat[S.view] !== '__groups') {
+    var top = $('#gridWrap [data-idx="0"]');
+    if (top) { $('#gridWrap').scrollTop = 0; focusEl(top); return; }
+  }
   if ((S.view === 'live') && S.cat[S.view] && S.cat[S.view] !== '__groups') { backToGroups(S.view); return; }
   var cur = document.activeElement, grp = $('#libGroups .grp.active') || $('#libGroups .grp');
   if (grp && cur && (cur.id === 'libQ' || cur.closest('#gridWrap'))) {
