@@ -26,14 +26,14 @@ if (load('ratingsV', 0) < 2) { S.ratings = {}; save('ratings', {}); save('rating
 if (load('ratingsV', 0) < 3) { Object.keys(S.ratings).forEach(function (k) { var r = S.ratings[k]; if (r && r.om && !r.imdb) delete r.om; }); save('ratings', S.ratings); save('ratingsV', 3); }
 /* the notes live in IndexedDB: localStorage holds ~5 MB shared with everything else, and a full one
  * silently stopped saving them, so every visit looked them all up again */
-var notesDb = null, notesWait = [];
+var notesDb = null, notesWait = [], notesLoaded = false;
 function withNotesDb(fn) {
   if (notesDb) { fn(notesDb); return; }
   notesWait.push(fn); if (notesWait.length > 1) return;
-  var req; try { req = indexedDB.open('atl-notas', 1); } catch (e) { notesWait = []; return; }
+  var req; try { req = indexedDB.open('atl-notas', 1); } catch (e) { notesWait = []; notesLoaded = true; return; }
   req.onupgradeneeded = function () { req.result.createObjectStore('kv'); };
   req.onsuccess = function () { notesDb = req.result; var w = notesWait; notesWait = []; w.forEach(function (f) { f(notesDb); }); };
-  req.onerror = function () { notesWait = []; };
+  req.onerror = function () { notesWait = []; notesLoaded = true; fillHero(); };
 }
 function saveNotes() {
   withNotesDb(function (db) {
@@ -41,14 +41,17 @@ function saveNotes() {
   });
 }
 withNotesDb(function (db) {
-  var r; try { r = db.transaction('kv', 'readonly').objectStore('kv').get('ratings'); } catch (e) { return; }
+  var r; try { r = db.transaction('kv', 'readonly').objectStore('kv').get('ratings'); } catch (e) { notesLoaded = true; return; }
+  r.onerror = function () { notesLoaded = true; fillHero(); };
   r.onsuccess = function () {
+    notesLoaded = true;
     var kept = r.result || {}, moved = Object.keys(S.ratings).length;
     Object.keys(kept).forEach(function (k) { if (!S.ratings[k]) S.ratings[k] = kept[k]; });
     if (moved) saveNotes(); // the copy that was in localStorage now lives here
     try { localStorage.removeItem('atl.ratings'); } catch (e) {}
     // posters drawn before the notes arrived get theirs now
     $$('.poster').forEach(function (card) { var it = S.byKey[card.getAttribute('data-key')], c = it && cachedRating(it); if (c) showRate(card, it, c); });
+    fillHero();
   };
 });
 // English became the preferred audio after this setting was already saved on the TVs
@@ -536,6 +539,18 @@ function growGrid(grid, upTo) {
   observeImgs(grid);
 }
 
+/* the "Continuar" card shows the title's wide picture: the saved notes may still be loading, or the title was never looked up */
+function fillHero() {
+  var hero = $('.hero'), btn = hero && $('[data-hist]', hero), it = btn && S.byKey[btn.getAttribute('data-hist')];
+  if (!it || $('img', hero) || !notesLoaded) return; // called again once the saved notes are in
+  function put(r) {
+    var u = (r && r.backdrop) || it.backdrop || (r && r.poster) || it.logo;
+    if (!u || !document.body.contains(hero) || $('img', hero)) return;
+    hero.insertAdjacentHTML('afterbegin', '<img class="lz" alt="" data-src="' + esc(thumb(u, 1280)) + '">'); observeImgs(hero);
+  }
+  var c = cachedRating(it);
+  if (c && c.backdrop) put(c); else if (S.cfg.tmdbKey) getRatings(it).then(put, function () { put(c); }); else put(c);
+}
 function renderHome() {
   var list = S.hist.filter(function (h) { return S.byKey[h.key]; }), h = list[0], rest = list.slice(1, 4);
   var r = h && cachedRating(S.byKey[h.key]);
@@ -557,6 +572,7 @@ function renderHome() {
   var exp = S.exp ? new Date(+S.exp * 1000) : null;
   html += '<footer class="homefoot">' + (exp ? '<span>Vence em: ' + exp.toLocaleDateString('pt-BR') + '</span>' : '') + '<span>Botão Vermelho: Favoritar · Botão Verde: Assistir Depois</span></footer>';
   paint($('#content'), '<div class="scroll home">' + html + '</div>');
+  fillHero();
 }
 
 function liveItems(view, cat) {
