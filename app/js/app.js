@@ -1126,7 +1126,7 @@ function showSec(sec) {
 function focusPanel() { var f = $('#setMain .f'); if (f) focusEl(f); }
 /* update on request: same check the shell runs in the background (casca/casca-update.js), then reopens on the new copy.
  * It lives here because this file updates over the air and the shell only with a new .ipk */
-var APP_VERSION = '2.4.0';
+var APP_VERSION = '2.4.1';
 function hashText(t) { var h = 2166136261; for (var i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(16); }
 function storeError(err) { return new Error(err && err.name === 'QuotaExceededError' ? 'Sem Espaço para o App' : 'Falha ao Gravar' + (err && err.name ? ' (' + err.name + ')' : '')); }
 function storeCopy(copy, again) {
@@ -1502,7 +1502,12 @@ function receiveList(l) {
   // the same list sent again edits the saved one instead of repeating it
   var had = S.lists.filter(function (x) { return x.type === d.type && (d.type === 'm3u' ? x.m3u === d.m3u : x.server === d.server && x.user === d.user); })[0];
   if (had) { d.id = had.id; d.name = had.name; }
-  closeRemote(); openDraft(d); toast('Lista Recebida. Dê um Nome a Ela.', 5000);
+  closeRemote();
+  var nome = String(l.nome || '').trim();
+  if (!nome) { openDraft(d); toast('Lista Recebida. Dê um Nome a Ela.', 5000); return; }
+  // named on the phone: nothing left to type on the TV
+  d.name = nome; if (!d.id) { d.id = 'l' + Date.now(); S.lists.push(d); } else Object.assign(had, d);
+  save('lists', S.lists); activateList(d.id);
 }
 function closeRemote() {
   if (remoteBridge) { try { remoteBridge.cancel(); } catch (e) {} remoteBridge = null; }

@@ -1,6 +1,6 @@
 {
   "id": "com.atl.player",
-  "version": "2.4.0",
+  "version": "2.4.1",
   "vendor": "Atl",
   "type": "web",
   "main": "index.html",
