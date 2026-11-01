@@ -1122,7 +1122,7 @@ function doSearch(text) {
 }
 
 /* Ajustes: sections on the left, the chosen one on the right. Moving over a section shows it, OK or right enters it */
-var SET_SECS = [['lists', 'Listas'], ['channels', 'Canais'], ['av', 'Áudio e Legenda'], ['library', 'Filmes e Séries'], ['adult', 'Conteúdo Adulto'], ['about', 'Sobre o App']];
+var SET_SECS = [['lists', 'Listas'], ['channels', 'Canais'], ['library', 'Filmes e Séries'], ['av', 'Áudio e Legenda'], ['adult', 'Conteúdo Adulto'], ['about', 'Sobre o App']];
 function setPanel(sec) {
   var c = S.cfg;
   function seg(name, opts) { return '<div class="row seg">' + opts.map(function (o) { return '<button class="f btn' + (c[name] === o[0] ? ' on' : '') + '" data-seg="' + name + '" data-val="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div>'; }
@@ -1166,7 +1166,7 @@ function showSec(sec) {
 function focusPanel() { var f = $('#setMain .f'); if (f) focusEl(f); }
 /* update on request: same check the shell runs in the background (casca/casca-update.js), then reopens on the new copy.
  * It lives here because this file updates over the air and the shell only with a new .ipk */
-var APP_VERSION = '2.3.0';
+var APP_VERSION = '2.3.1';
 function hashText(t) { var h = 2166136261; for (var i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(16); }
 function storeCopy(copy) {
   return new Promise(function (res, rej) {
