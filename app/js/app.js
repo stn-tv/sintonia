@@ -24,6 +24,33 @@ var S = {
 if (load('ratingsV', 0) < 2) { S.ratings = {}; save('ratings', {}); save('ratingsV', 2); }
 // notes saved while the OMDb daily limit was hit came back without IMDb and were never asked again
 if (load('ratingsV', 0) < 3) { Object.keys(S.ratings).forEach(function (k) { var r = S.ratings[k]; if (r && r.om && !r.imdb) delete r.om; }); save('ratings', S.ratings); save('ratingsV', 3); }
+/* the notes live in IndexedDB: localStorage holds ~5 MB shared with everything else, and a full one
+ * silently stopped saving them, so every visit looked them all up again */
+var notesDb = null, notesWait = [];
+function withNotesDb(fn) {
+  if (notesDb) { fn(notesDb); return; }
+  notesWait.push(fn); if (notesWait.length > 1) return;
+  var req; try { req = indexedDB.open('atl-notas', 1); } catch (e) { notesWait = []; return; }
+  req.onupgradeneeded = function () { req.result.createObjectStore('kv'); };
+  req.onsuccess = function () { notesDb = req.result; var w = notesWait; notesWait = []; w.forEach(function (f) { f(notesDb); }); };
+  req.onerror = function () { notesWait = []; };
+}
+function saveNotes() {
+  withNotesDb(function (db) {
+    try { db.transaction('kv', 'readwrite').objectStore('kv').put(S.ratings, 'ratings'); } catch (e) {}
+  });
+}
+withNotesDb(function (db) {
+  var r; try { r = db.transaction('kv', 'readonly').objectStore('kv').get('ratings'); } catch (e) { return; }
+  r.onsuccess = function () {
+    var kept = r.result || {}, moved = Object.keys(S.ratings).length;
+    Object.keys(kept).forEach(function (k) { if (!S.ratings[k]) S.ratings[k] = kept[k]; });
+    if (moved) saveNotes(); // the copy that was in localStorage now lives here
+    try { localStorage.removeItem('atl.ratings'); } catch (e) {}
+    // posters drawn before the notes arrived get theirs now
+    $$('.poster').forEach(function (card) { var it = S.byKey[card.getAttribute('data-key')], c = it && cachedRating(it); if (c) showRate(card, it, c); });
+  };
+});
 // English became the preferred audio after this setting was already saved on the TVs
 if (load('audioV', 0) < 1) { S.cfg.prefAudio = 'en'; save('cfg', S.cfg); save('audioV', 1); }
 // local-config.js is generated at packaging time (tools/gerar-config.js) and exists only in the .ipk: it seeds the keys
@@ -385,8 +412,8 @@ function getRatings(item, force) {
     }).then(function (o) {
       delete ratingPending[ck];
       S.ratings[ck] = o; var keys = Object.keys(S.ratings);
-      if (keys.length > 3000) keys.slice(0, 500).forEach(function (k) { delete S.ratings[k]; });
-      saveSoon('ratings'); return noteBr(item, o);
+      if (keys.length > 20000) keys.slice(0, 2000).forEach(function (k) { delete S.ratings[k]; });
+      clearTimeout(saveT.ratings); saveT.ratings = setTimeout(saveNotes, 2000); return noteBr(item, o);
     }, function () { delete ratingPending[ck]; return out; });
   ratingPending[ck] = p; return p;
 }
@@ -1558,7 +1585,6 @@ function refreshApp() {
   try { sessionStorage.setItem('atl.after', JSON.stringify({ view: S.view || 'home', spot: S.spot, cat: groupAdult(S.view, S.cat[S.view]) ? null : S.cat[S.view], play: live && !P.item.adult ? P.item.kind + ':' + P.item.id : null, tv: !!P.tv, full: playerOpen() })); } catch (e) {}
   if (playerShown()) saveProgress();
   teardown();
-  try { localStorage.removeItem('atl.ratings'); } catch (e) {}
   var wipe = window.caches ? caches.keys().then(function (k) { return Promise.all(k.map(function (n) { return caches.delete(n); })); }) : Promise.resolve();
   wipe.catch(function () {}).then(function () { location.reload(); });
 }
