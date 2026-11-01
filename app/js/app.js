@@ -67,7 +67,7 @@ function getJSON(url, opts, tries) {
   var api = /player_api\.php/.test(url), left = tries == null ? (api ? 3 : 0) : tries;
   return timeoutFetch(url, opts || (S.fresh ? { cache: 'reload' } : undefined), api ? 120000 : 40000).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).catch(function (e) {
     if (!left || /HTTP 4|esgotado/.test(e.message)) throw e;
-    if (!S.loaded) status('Servidor Ocupado, Tentando de Novo…');
+    if (!S.loaded) status('Servidor Ocupado, Tentando de Novo');
     return new Promise(function (res) { setTimeout(res, 2000 * (4 - left)); }).then(function () { return getJSON(url, opts, left - 1); });
   });
 }
@@ -227,11 +227,11 @@ function catMap(list) { var m = {}; (list || []).forEach(function (c) { c.catego
 function register(item) { S.byKey[item.kind + ':' + item.id] = item; return item; }
 
 function loadXtream() {
-  status('Conectando…');
+  status('Conectando');
   return getJSON(xurl('')).then(function (info) {
     if (!info || !info.user_info || String(info.user_info.auth) === '0') throw new Error('Usuário ou Senha Inválidos');
     S.exp = info.user_info.exp_date || '';
-    status('Carregando Categorias…');
+    status('Carregando Categorias');
     return getJSON(xurl('get_live_categories'));
   }).then(function (c) {
     S.liveCats = c || [];
@@ -241,20 +241,20 @@ function loadXtream() {
     return getJSON(xurl('get_series_categories'));
   }).then(function (c) {
     S.seriesCats = c || [];
-    status('Carregando Canais…');
+    status('Carregando Canais');
     return getJSON(xurl('get_live_streams'));
   }).then(function (live) {
     var cm = catMap(S.liveCats), fmt = S.cfg.liveFormat;
     S.live = (live || []).map(function (s) { return register({ kind: 'live', id: s.stream_id, name: s.name, logo: s.stream_icon, cat: String(s.category_id), catName: cm[s.category_id] || '',
       epg: s.epg_channel_id, url: xbase() + '/live/' + S.cfg.user + '/' + S.cfg.pass + '/' + s.stream_id + '.' + fmt }); });
-    status('Carregando Filmes…');
+    status('Carregando Filmes');
     return getJSON(xurl('get_vod_streams'));
   }).then(function (vod) {
     var cm = catMap(S.movieCats);
     S.movies = (vod || []).map(function (s) { return register({ kind: 'movie', id: s.stream_id, name: s.name, logo: s.stream_icon, cat: String(s.category_id), catName: cm[s.category_id] || '',
       rating: parseFloat(s.rating) || 0, year: s.year || yearOf(s.name), ext: s.container_extension || 'mp4', added: +s.added || 0,
       url: xbase() + '/movie/' + S.cfg.user + '/' + S.cfg.pass + '/' + s.stream_id + '.' + (s.container_extension || 'mp4') }); });
-    status('Carregando Séries…');
+    status('Carregando Séries');
     return getJSON(xurl('get_series'));
   }).then(function (ser) {
     var cm = catMap(S.seriesCats);
@@ -278,10 +278,10 @@ function parseM3U(text) {
   return out;
 }
 function loadM3U() {
-  status('Baixando Lista…');
+  status('Baixando Lista');
   return timeoutFetch(S.cfg.m3u, S.fresh ? { cache: 'reload' } : {}, 90000).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); }).then(function (txt) {
     if (txt.indexOf('#EXTM3U') < 0 && txt.indexOf('#EXTINF') < 0) throw new Error('O Link Não Parece Ser uma Lista M3U');
-    status('Organizando…');
+    status('Organizando');
     var items = parseM3U(txt), cats = { live: {}, movie: {}, series: {} }, n = 0;
     S.live = []; S.movies = []; S.series = [];
     var seriesIdx = {};
@@ -466,7 +466,7 @@ function histPct(h) { return h.d ? Math.min(100, h.t / h.d * 100) : 0; }
 function resume(h) {
   var item = S.byKey[h.key]; if (!item) return;
   if (!h.ep) { play(item); return; }
-  setBusy('Abrindo ' + h.name + '…');
+  setBusy('Abrindo ' + h.name);
   fetchEps(item).then(function (eps) {
     setBusy('');
     var i = -1; eps.forEach(function (e, k) { if (String(e.id) === String(h.ep.id)) i = k; });
@@ -878,7 +878,7 @@ function watchGame(g, t) {
   var m = gameChannels(g);
   if (!m.length) { toast(g.channels.length ? 'Nenhum Canal Deste Jogo Está na Sua Lista' : 'Canal Não Informado para Este Jogo', 3500); return; }
   lastFocus = t;
-  setBusy('Procurando o Canal do Jogo…');
+  setBusy('Procurando o Canal do Jogo');
   checkChannels(g, m).then(function (rows) {
     setBusy('');
     var hits = rows.filter(function (r) { return r.hit; });
@@ -1056,7 +1056,7 @@ function watchRem() {
   if (playerOpen()) { if (P.tv) leaveFull(); else closePlayer(); }
   if (!$('#detail').classList.contains('hidden')) closeDetail();
   // the site may only list the channels close to kick-off: ask again before opening
-  setBusy('Abrindo o Jogo…');
+  setBusy('Abrindo o Jogo');
   fetchGames().then(function () { setBusy(''); watchGame(findGame(r.id) || g, document.activeElement); });
 }
 /* what OK offers on a match that hasn't started */
@@ -1142,10 +1142,48 @@ function renderSettings() {
     '<h2 class="settitle">Chaves de Notas e Legendas</h2>' +
     KEY_FIELDS.map(function (k) { return '<label>' + k[1] + '</label><input class="f inp" readonly id="k_' + k[0] + '" type="password" value="' + esc(c[k[0]]) + '" style="width:100%">'; }).join('') +
     '<div class="row"><button class="f btn" id="saveKeys">Salvar Chaves</button></div>' +
+    '<h2 class="settitle">Atualização</h2>' +
+    row('Versão ' + APP_VERSION, '<button class="f btn" id="checkUpdate">Verificar Atualização</button>') +
     '<h2 class="settitle">Conteúdo Adulto</h2>' +
     '<div class="row"><button class="f btn" id="adultLock">Bloqueio com Senha: ' + (c.adultLock ? 'ligado' : 'desligado') + '</button><button class="f btn" id="adultPin">Trocar Senha</button></div>' +
-    '<p class="note">Tudo Fica Salvo Só na TV. O App É Apenas um Player: Ele Não Fornece Canais Nem Conteúdo. Versão 2.2.0</p>' +
+    '<p class="note">Tudo Fica Salvo Só na TV. O App É Apenas um Player: Ele Não Fornece Canais Nem Conteúdo.</p>' +
     '</div></div>';
+}
+/* update on request: same check the shell runs in the background (casca/casca-update.js), then reopens on the new copy.
+ * It lives here because this file updates over the air and the shell only with a new .ipk */
+var APP_VERSION = '2.2.1';
+function hashText(t) { var h = 2166136261; for (var i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(16); }
+function storeCopy(copy) {
+  return new Promise(function (res, rej) {
+    var req = indexedDB.open('casca', 1);
+    req.onupgradeneeded = function () { req.result.createObjectStore('copias'); };
+    req.onerror = function () { rej(new Error('Sem Espaço na TV')); };
+    req.onsuccess = function () {
+      var tx = req.result.transaction('copias', 'readwrite'), box = tx.objectStore('copias'), r = box.get('atual');
+      r.onsuccess = function () { if (r.result && r.result.id !== copy.id) box.put(r.result, 'anterior'); box.put(copy, 'atual'); };
+      tx.oncomplete = function () { req.result.close(); res(); };
+      tx.onerror = tx.onabort = function () { req.result.close(); rej(new Error('Sem Espaço na TV')); };
+    };
+  });
+}
+function checkUpdate() {
+  var C = window.CASCA;
+  if (!C || !C.pages) { toast('Só Funciona na TV'); return; }
+  function get(path) { return timeoutFetch(C.pages + path + '?t=' + Date.now(), { cache: 'no-store' }, 60000).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); }); }
+  setBusy('Verificando Atualização');
+  get('versao.json').then(function (txt) {
+    var info = JSON.parse(txt), v = info.canais[C.canal];
+    if (v.id === (window.CASCA_ATUAL || C.baseId)) { setBusy(''); toast('Você Já Está na Versão Mais Nova'); return; }
+    setBusy('Baixando a Versão ' + info.versao);
+    return get(v.arq).then(function (html) {
+      if (html.length !== v.tam || hashText(html) !== v.confere) throw new Error('Download Incompleto');
+      setBusy('Instalando a Versão ' + info.versao);
+      return storeCopy({ id: v.id, html: html, em: Date.now() });
+    }).then(function () {
+      try { localStorage.removeItem('casca.ruim'); sessionStorage.setItem('atl.after', JSON.stringify({ view: 'settings', spot: S.spot, cat: null, play: null, tv: false, full: false })); } catch (e) {}
+      location.replace('index.html');
+    });
+  }).catch(function (e) { setBusy(''); toast('Não Consegui Atualizar: ' + e.message, 6000); });
 }
 var KEY_FIELDS = [['tmdbKey', 'TMDB'], ['omdbKey', 'OMDb (IMDb)'], ['wyzieKey', 'Wyzie'], ['osKey', 'OpenSubtitles']];
 function saveKeys() {
@@ -1213,7 +1251,7 @@ function setActive(id) {
 function activateList(id) {
   var prev = S.listOn === id ? null : S.listOn, l = S.lists.filter(function (x) { return x.id === id; })[0];
   setActive(id); S.loaded = false; S.cat = {};
-  setBusy('Carregando ' + l.name + '…');
+  setBusy('Carregando ' + l.name);
   loadAll().then(function () { setBusy(''); toast('Lista Carregada ✓'); go('home'); focusNav(); }, function (e) {
     if (!prev) { loadFailed(e); return; }
     setActive(prev); toast(l.name + ' Não Carregou: ' + e.message, 6000); reload();
@@ -1228,7 +1266,7 @@ function deleteList() {
 }
 function reload() {
   S.loaded = false; S.cat = {};
-  setBusy('Carregando Sua Lista…');
+  setBusy('Carregando Sua Lista');
   loadAll().then(function () { setBusy(''); toast('Lista Carregada ✓'); go('home'); focusNav(); }, loadFailed);
 }
 /* a list that fails to load keeps its data: Início explains and offers another try */
@@ -1275,12 +1313,12 @@ function favLabel(key) { return STAR + (isFav(key) ? 'Nos Favoritos' : 'Favorito
 function openDetail(item) {
   var d = $('#detail'), key = item.kind + ':' + item.id, h = histFor(key);
   d.innerHTML = '<div class="dbg"><img id="dBg" alt=""></div><div class="dshade"></div><div class="dshade2"></div><div class="dhead">' +
-    '<div class="dtop"><p class="eyebrow" id="dMeta">' + esc([item.kind === 'movie' ? 'FILME' : 'SÉRIE', item.year, item.catName].filter(Boolean).join(' · ')) + '</p><span class="dload" id="dLoad"><i class="spin sm"></i>Carregando Informações…</span></div>' +
+    '<div class="dtop"><p class="eyebrow" id="dMeta">' + esc([item.kind === 'movie' ? 'FILME' : 'SÉRIE', item.year, item.catName].filter(Boolean).join(' · ')) + '</p><span class="dload" id="dLoad"><i class="spin sm"></i>Carregando Informações</span></div>' +
     '<h1>' + esc(item.name) + '</h1><div class="ratings" id="dRatings">' + (listRate(cachedRating(item), item) ? '<span class="pill">Lista ' + (+item.rating).toFixed(1) + '</span>' : '') + '</div>' +
     '<div class="plot" id="dPlot">' + esc(item.plot || '') + '</div>' +
     '<div class="row"><button class="f bigbtn" id="dPlay">' + (item.kind === 'series' && !h ? 'Carregando…' : '▶ ' + (h ? 'Continuar' : 'Assistir')) + '</button>' +
     '<button class="f dbtn" id="dLater">' + laterLabel(key) + '</button><button class="f dbtn" id="dFav">' + favLabel(key) + '</button></div></div>' +
-    (item.kind === 'series' ? '<div class="dlower"><div class="seasons" id="dSeasons" role="tablist" aria-label="Temporadas"></div><div class="episodes scroll" id="dEps"><div class="dwait"><i class="spin sm"></i>Carregando Episódios…</div></div></div>' : '');
+    (item.kind === 'series' ? '<div class="dlower"><div class="seasons" id="dSeasons" role="tablist" aria-label="Temporadas"></div><div class="episodes scroll" id="dEps"><div class="dwait"><i class="spin sm"></i>Carregando Episódios</div></div></div>' : '');
   d.classList.remove('hidden'); d._item = item; d._eps = null; d._from = lastFocus;
   // the ratings plus the list's own details: the notice stays until both are in
   var waits = 1 + (item.kind === 'series' || S.cfg.type === 'xtream' ? 1 : 0);
@@ -1456,7 +1494,7 @@ function openRemote() {
   var r = $('#remote');
   r.innerHTML = '<div class="rleft"><h1>Adicione Sua Lista pelo Celular</h1><ol><li><span>1</span>Aponte a Câmera do Celular para o Código</li><li><span>2</span>Cole o Link M3U ou o Login que o Provedor Mandou</li><li><span>3</span>Toque em Enviar. A TV Carrega Sozinha.</li></ol>' +
     '<p class="muted">O Celular Precisa Estar no Mesmo Wi-Fi da TV.</p><p class="muted" id="rUrl"></p></div>' +
-    '<div class="rright"><div id="qr" class="qr"></div><div class="rwait"><i></i><span id="rState">Ligando…</span></div></div>';
+    '<div class="rright"><div id="qr" class="qr"></div><div class="rwait"><i></i><span id="rState">Ligando</span></div></div>';
   r.classList.remove('hidden');
   if (!window.PalmServiceBridge) { setText('#rState', 'Só Funciona na TV'); return; }
   remoteBridge = new PalmServiceBridge();
@@ -1473,7 +1511,7 @@ function showQR(url) {
   for (y = 0; y < n; y++) for (x = 0; x < n; x++) if (q.isDark(y, x)) d += 'M' + (x + 4) * cell + ' ' + (y + 4) * cell + 'h' + cell + 'v' + cell + 'h-' + cell + 'z';
   var size = (n + 8) * cell;
   $('#qr').innerHTML = '<svg viewBox="0 0 ' + size + ' ' + size + '" role="img" aria-label="QR Code"><path fill="#000" d="' + d + '"/></svg>';
-  setText('#rUrl', 'Ou Abra no Navegador: ' + url); setText('#rState', 'Aguardando o Celular…');
+  setText('#rUrl', 'Ou Abra no Navegador: ' + url); setText('#rState', 'Aguardando o Celular');
 }
 function receiveList(l) {
   var d = newDraft();
@@ -1494,7 +1532,7 @@ function closeRemote() {
 /* ================= refresh: drop everything the app holds and load the list again ================= */
 function refreshApp() {
   var live = playerShown() && P.item && P.item.kind === 'live';
-  setBusy('Atualizando: Limpando o Cache e Recarregando a Lista…');
+  setBusy('Atualizando: Limpando o Cache e Recarregando a Lista');
   try { sessionStorage.setItem('atl.after', JSON.stringify({ view: S.view || 'home', spot: S.spot, cat: groupAdult(S.view, S.cat[S.view]) ? null : S.cat[S.view], play: live && !P.item.adult ? P.item.kind + ':' + P.item.id : null, tv: !!P.tv, full: playerOpen() })); } catch (e) {}
   if (playerShown()) saveProgress();
   teardown();
@@ -2163,6 +2201,8 @@ function move(dir) {
     else if (dir === 'right') { if (r.left < a.right - 4) return; p = dx; s2 = Math.abs(dy); }
     else if (dir === 'up') { if (r.bottom > a.top + 4) return; p = -dy; s2 = Math.abs(dx); }
     else { if (r.top < a.bottom - 4) return; p = dy; s2 = Math.abs(dx); }
+    // from a wide box the next row counts as straight ahead, even with its buttons at the left end
+    if ((dir === 'up' || dir === 'down') && a.width > 500 && r.left < a.right && r.right > a.left) s2 *= 0.1;
     var sc2 = p + s2 * 2.5; if (sc2 < bs) { bs = sc2; best = el; }
   });
   if (!best) return;
@@ -2375,6 +2415,7 @@ document.addEventListener('click', function (e) {
     save('cfg', S.cfg); return;
   }
   if (t.id === 'saveKeys') { saveKeys(); return; }
+  if (t.id === 'checkUpdate') { checkUpdate(); return; }
   if (t.id === 'reload') { reload(); return; }
   if (t.id === 'openRemote') { openRemote(); return; }
   if (t.id === 'clearSeen') { askClearSeen(); return; }
