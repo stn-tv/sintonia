@@ -1,0 +1,16 @@
+# Chaves e dados locais: nunca publicar
+chaves-locais.json
+app/js/local-config.js
+*.token
+tv-*.json
+
+# Pacotes podem levar chaves embutidas
+pacotes/
+*.ipk
+atl-player.zip
+
+# Notas locais (IPs, modelo das TVs)
+CLAUDE.md
+melhorias-01-11.md
+
+node_modules/
