@@ -1143,7 +1143,7 @@ function renderSettings() {
     '<div class="row"><button class="f btn" id="saveKeys">Salvar Chaves</button></div>' +
     '<h2 class="settitle">Conteúdo Adulto</h2>' +
     '<div class="row"><button class="f btn" id="adultLock">Bloqueio com Senha: ' + (c.adultLock ? 'ligado' : 'desligado') + '</button><button class="f btn" id="adultPin">Trocar Senha</button></div>' +
-    '<p class="note">Tudo Fica Salvo Só na TV. O App É Apenas um Player: Ele Não Fornece Canais Nem Conteúdo.</p>' +
+    '<p class="note">Tudo Fica Salvo Só na TV. O App É Apenas um Player: Ele Não Fornece Canais Nem Conteúdo. Versão 2.1.9</p>' +
     '</div></div>';
 }
 var KEY_FIELDS = [['tmdbKey', 'TMDB'], ['omdbKey', 'OMDb (IMDb)'], ['wyzieKey', 'Wyzie'], ['osKey', 'OpenSubtitles']];
