@@ -3,6 +3,7 @@ chaves-locais.json
 app/js/local-config.js
 *.token
 tv-*.json
+dist/
 
 # Pacotes podem levar chaves embutidas
 pacotes/
