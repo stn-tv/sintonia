@@ -1151,7 +1151,7 @@ function renderSettings() {
 }
 /* update on request: same check the shell runs in the background (casca/casca-update.js), then reopens on the new copy.
  * It lives here because this file updates over the air and the shell only with a new .ipk */
-var APP_VERSION = '2.2.2';
+var APP_VERSION = '2.2.3';
 function hashText(t) { var h = 2166136261; for (var i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(16); }
 function storeCopy(copy) {
   return new Promise(function (res, rej) {
@@ -2201,8 +2201,8 @@ function move(dir) {
     else if (dir === 'right') { if (r.left < a.right - 4) return; p = dx; s2 = Math.abs(dy); }
     else if (dir === 'up') { if (r.bottom > a.top + 4) return; p = -dy; s2 = Math.abs(dx); }
     else { if (r.top < a.bottom - 4) return; p = dy; s2 = Math.abs(dx); }
-    // a wide box and the row next to it count as straight ahead, even with the buttons at the left end
-    if ((dir === 'up' || dir === 'down') && (cur.matches('.inp, .listname') || el.matches('.inp, .listname')) && r.left < a.right && r.right > a.left) s2 *= 0.1;
+    // a wide box and the row next to it count as straight ahead, and the row is entered by its first button
+    if ((dir === 'up' || dir === 'down') && (cur.matches('.inp, .listname') || el.matches('.inp, .listname')) && r.left < a.right && r.right > a.left) s2 = Math.abs(r.left - a.left) * 0.1;
     var sc2 = p + s2 * 2.5; if (sc2 < bs) { bs = sc2; best = el; }
   });
   if (!best) return;
