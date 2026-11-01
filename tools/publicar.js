@@ -19,13 +19,18 @@ function juntar(comCompat) {
     if (/<\/script/i.test(js)) throw new Error(arq + ' tem </script>: quebraria o .html único');
     return '<script>\n' + js + '\n</script>';
   });
-  return html;
+  // the number seen in Ajustes moves with every publication: x.y from appinfo.json, the last part is the GitHub run
+  return html.replace(/var APP_VERSION = '[^']*';/, "var APP_VERSION = '" + versaoApp() + "';");
+}
+function versaoApp() {
+  var base = JSON.parse(ler(path.join(app, 'appinfo.json'))).version, run = process.env.GITHUB_RUN_NUMBER;
+  return run ? base.split('.').slice(0, 2).join('.') + '.' + run : base;
 }
 // o mesmo cálculo roda na TV (casca/casca-update.js), que confere o download antes de guardar
 function conferir(t) { var h = 2166136261; for (var i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(16); }
 
 fs.mkdirSync(saida, { recursive: true });
-var canais = {}, app_ver = JSON.parse(ler(path.join(app, 'appinfo.json'))).version;
+var canais = {}, app_ver = versaoApp();
 [['moderno', false], ['compat', true]].forEach(function (c) {
   var t = juntar(c[1]), arq = c[0] + '.html';
   fs.writeFileSync(path.join(saida, arq), t);

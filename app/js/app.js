@@ -1206,7 +1206,7 @@ function showSec(sec) {
 function focusPanel() { var f = $('#setMain .f'); if (f) focusEl(f); }
 /* update on request: same check the shell runs in the background (casca/casca-update.js), then reopens on the new copy.
  * It lives here because this file updates over the air and the shell only with a new .ipk */
-var APP_VERSION = '2.4.1';
+var APP_VERSION = '2.5.0'; // replaced when published (tools/publicar.js)
 function hashText(t) { var h = 2166136261; for (var i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(16); }
 function storeError(err) { return new Error(err && err.name === 'QuotaExceededError' ? 'Sem Espaço para o App' : 'Falha ao Gravar' + (err && err.name ? ' (' + err.name + ')' : '')); }
 function storeCopy(copy, again) {
@@ -1225,6 +1225,18 @@ function storeCopy(copy, again) {
     return new Promise(function (res) { setTimeout(res, 1500); }).then(function () { return storeCopy(copy, true); });
   });
 }
+// id of the copy already saved for the next opening (the shell may have fetched it in the background)
+function storedCopyId() {
+  return new Promise(function (res) {
+    var req; try { req = indexedDB.open('casca', 1); } catch (e) { res(''); return; }
+    req.onupgradeneeded = function () { req.result.createObjectStore('copias'); };
+    req.onerror = function () { res(''); };
+    req.onsuccess = function () {
+      try { var r = req.result.transaction('copias', 'readonly').objectStore('copias').get('atual'); r.onsuccess = function () { req.result.close(); res(r.result ? r.result.id : ''); }; r.onerror = function () { req.result.close(); res(''); }; }
+      catch (e) { req.result.close(); res(''); }
+    };
+  });
+}
 function checkUpdate() {
   var C = window.CASCA;
   if (!C || !C.pages) { toast('Só Funciona na TV'); return; }
@@ -1232,15 +1244,24 @@ function checkUpdate() {
   setBusy('Verificando Atualização');
   get('versao.json').then(function (txt) {
     var info = JSON.parse(txt), v = info.canais[C.canal];
-    if (v.id === (window.CASCA_ATUAL || C.baseId)) { setBusy(''); toast('Você Já Está na Versão Mais Nova'); return; }
-    setBusy('Baixando a Versão ' + info.versao);
-    return get(v.arq).then(function (html) {
-      if (html.length !== v.tam || hashText(html) !== v.confere) throw new Error('Download Incompleto');
-      setBusy('Instalando a Versão ' + info.versao);
-      return storeCopy({ id: v.id, html: html, em: Date.now() });
+    if (v.id === (window.CASCA_ATUAL || C.baseId)) { setBusy(''); toast('Você Já Está na Versão Mais Nova (' + APP_VERSION + ')'); return; }
+    return storedCopyId().then(function (saved) {
+      if (saved === v.id) return; // already downloaded: only the restart is missing
+      setBusy('Baixando a Versão ' + info.versao);
+      return get(v.arq).then(function (html) {
+        if (html.length !== v.tam || hashText(html) !== v.confere) throw new Error('Download Incompleto');
+        setBusy('Instalando a Versão ' + info.versao);
+        return storeCopy({ id: v.id, html: html, em: Date.now() });
+      });
     }).then(function () {
-      try { localStorage.removeItem('casca.ruim'); sessionStorage.setItem('atl.after', JSON.stringify({ view: 'settings', spot: S.spot, cat: null, play: null, tv: false, full: false })); } catch (e) {}
-      location.replace('index.html');
+      setBusy('');
+      try { localStorage.removeItem('casca.ruim'); } catch (e) {}
+      // restarting reloads the whole list: the viewer chooses when
+      chooser('Versão ' + info.versao + ' Pronta', [['depois', 'Usar na Próxima Vez que Abrir o App'], ['agora', 'Reiniciar Agora (Recarrega a Lista)']], 'depois', function (c) {
+        if (c !== 'agora') { toast('A Versão ' + info.versao + ' Entra na Próxima Abertura'); return; }
+        try { sessionStorage.setItem('atl.after', JSON.stringify({ view: 'settings', spot: S.spot, cat: null, play: null, tv: false, full: false })); } catch (e) {}
+        location.replace('index.html');
+      });
     });
   }).catch(function (e) { setBusy(''); toast('Não Consegui Atualizar: ' + e.message, 6000); });
 }
