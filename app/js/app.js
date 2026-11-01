@@ -1166,7 +1166,7 @@ function showSec(sec) {
 function focusPanel() { var f = $('#setMain .f'); if (f) focusEl(f); }
 /* update on request: same check the shell runs in the background (casca/casca-update.js), then reopens on the new copy.
  * It lives here because this file updates over the air and the shell only with a new .ipk */
-var APP_VERSION = '2.3.1';
+var APP_VERSION = '2.3.2';
 function hashText(t) { var h = 2166136261; for (var i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(16); }
 function storeCopy(copy) {
   return new Promise(function (res, rej) {
@@ -1232,7 +1232,7 @@ function listForm(d) {
     '<label>Tipo de Lista</label><div class="row seg">' + kind('xtream', 'Login Xtream') + kind('m3u', 'Link M3U') + '</div>' +
     '<div id="xtreamFields"' + (d.type === 'xtream' ? '' : ' class="hidden"') + '>' + field('l_server', 'Servidor (Ex.: http://exemplo.com:8080)', d.server) + field('l_user', 'Usuário', d.user) + field('l_pass', 'Senha', d.pass, true) + '</div>' +
     '<div id="m3uFields"' + (d.type === 'm3u' ? '' : ' class="hidden"') + '>' + field('l_m3u', 'Link da Lista M3U (Colar o Link Completo Preenche Servidor, Usuário e Senha)', d.m3u) + '</div>' +
-    '<div class="row"><button class="f btn primary" id="listUse">Salvar e Usar Esta Lista</button><button class="f btn" id="listSave">Salvar</button>' +
+    '<div class="row">' + (d.id === S.listOn ? '' : '<button class="f btn primary" id="listUse">Salvar e Usar Esta Lista</button>') + '<button class="f btn' + (d.id === S.listOn ? ' primary' : '') + '" id="listSave">Salvar</button>' +
     (d.id && d.id !== S.listOn ? '<button class="f btn" id="listDel">Excluir</button>' : '') + '<button class="f btn" id="listCancel">Cancelar</button></div></div>';
 }
 function openDraft(d) { if (S.view !== 'settings') go('settings'); S.setSec = 'lists'; S.draft = d; renderSettings(); focusEl($('#l_name')); }
@@ -1251,10 +1251,12 @@ function saveDraft(use) {
     Object.assign(l, { server: '', user: '', pass: '', m3u: '' }, p);
   }
   var cur = d.id ? S.lists.filter(function (x) { return x.id === d.id; })[0] : null;
+  // a new name changes nothing the TV loaded: only the connection data asks for a reload
+  var moved = !cur || ENTRY_KEYS.some(function (k) { return (cur[k] || '') !== (l[k] || ''); });
   if (cur) Object.assign(cur, l);
   else { cur = Object.assign({ id: 'l' + Date.now() }, l); S.lists.push(cur); }
   save('lists', S.lists); S.draft = null;
-  if (use || cur.id === S.listOn || !S.listOn) { activateList(cur.id); return; }
+  if ((use && cur.id !== S.listOn) || (moved && cur.id === S.listOn) || !S.listOn) { activateList(cur.id); return; }
   renderSettings(); focusPanel(); toast('Lista Salva');
 }
 function setActive(id) {
