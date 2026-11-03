@@ -1421,7 +1421,7 @@ var BOOKMARK = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stro
 var STAR = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9z"/></svg>';
 function laterLabel(key) { return BOOKMARK + (isLater(key) ? 'Na Lista' : 'Assistir Depois'); }
 function favLabel(key) { return STAR + (isFav(key) ? 'Nos Favoritos' : 'Favorito'); }
-function openDetail(item) {
+function openDetail(item, toEp) {
   var d = $('#detail'), key = item.kind + ':' + item.id, h = histFor(key);
   d.innerHTML = '<div class="dbg"><img id="dBg" alt=""></div><div class="dshade"></div><div class="dshade2"></div><div class="dhead">' +
     '<div class="dtop"><p class="eyebrow" id="dMeta">' + esc([item.kind === 'movie' ? 'FILME' : 'SÉRIE', item.year, item.catName].filter(Boolean).join(' · ')) + '</p><span class="dload" id="dLoad"><i class="spin sm"></i>Carregando Informações</span></div>' +
@@ -1430,11 +1430,11 @@ function openDetail(item) {
     '<div class="row"><button class="f bigbtn" id="dPlay">' + (item.kind === 'series' && !h ? 'Carregando' : '▶ ' + (h ? 'Continuar' : 'Assistir')) + '</button>' +
     '<button class="f dbtn" id="dLater">' + laterLabel(key) + '</button><button class="f dbtn" id="dFav">' + favLabel(key) + '</button></div></div>' +
     (item.kind === 'series' ? '<div class="dlower"><div class="seasons" id="dSeasons" role="tablist" aria-label="Temporadas"></div><div class="episodes scroll" id="dEps"><div class="dwait"><i class="spin sm"></i>Carregando Episódios</div></div></div>' : '');
-  d.classList.remove('hidden'); d._item = item; d._eps = null; d._from = lastFocus;
+  d.classList.remove('hidden'); d._item = item; d._eps = null; d._from = lastFocus; d._toEp = !!toEp;
   // the ratings plus the list's own details: the notice stays until both are in
   var waits = 1 + (item.kind === 'series' || S.cfg.type === 'xtream' ? 1 : 0);
   function loaded() { if (--waits <= 0 && d._item === item) { var e = $('#dLoad'); if (e) e.remove(); } }
-  setTimeout(function () { var b = $('#dPlay'); if (b) b.focus(); }, 30);
+  setTimeout(function () { var b = (d._toEp && $('#dEps .ep.current')) || $('#dPlay'); if (b) focusEl(b); }, 30);
   function art(r) {
     var bg = $('#dBg'); if (!bg || d._item !== item) return;
     // a wide picture fills the area; a vertical cover is shown whole, never stretched
@@ -1499,6 +1499,7 @@ function loadEpisodes(item, loaded) {
     if (h && h.ep) $('#dPlay').textContent = '▶ Continuar T' + h.ep.season + ' · E' + h.ep.num;
     else $('#dPlay').textContent = '▶ Assistir T' + eps[0].season + ' · E' + eps[0].num;
     showSeason(item, cur);
+    var on = d._toEp && $('#dEps .ep.current'); if (on) focusEl(on);
   }).catch(function (e) { var w = $('#dEps'); if (w) w.innerHTML = '<div class="empty">Erro ao Carregar Episódios: ' + esc(e.message) + '</div>'; setText('#dPlay', 'Sem Episódios'); }).then(loaded);
 }
 function epHTML(e, i, h) {
@@ -1790,6 +1791,12 @@ function finish() {
   if (P.ep) savePos(P.posKey, { t: 0, d: video.duration || 0, at: Date.now(), seen: 1 }); else { delete S.pos[P.posKey]; save('pos', S.pos); }
   if (n) updateHist(P.item, n, 0, 0); else dropHist(key);
 }
+/* the series page may not be open behind the player (Continuar on Início starts the episode straight away):
+ * open it then, on the episode that was playing, instead of falling back to Início */
+function playerEpisodes() {
+  if (!$('#detail').classList.contains('hidden')) { closePlayer(); return; }
+  var item = P.item; closePlayer(); openDetail(item, true);
+}
 function closePlayer() {
   saveProgress();
   teardown(); clearExtSubs(); hideCard();
@@ -1913,7 +1920,7 @@ function gearMenu(at) {
   var opts = [{ name: 'Áudio: ' + (a ? a.name.split(' — ')[0] : 'Padrão'), fn: audioMenu }, { name: 'Legenda: ' + (P.subIdx === -1 ? 'Desligada' : 'Ligada'), fn: subsMenu }];
   opts.push({ name: isFav(key) ? 'Tirar dos Favoritos' : 'Favorito', fn: toggle(toggleFav, 2) });
   if (!live) opts.push({ name: isLater(key) ? 'Tirar de Assistir Depois' : 'Assistir Depois', fn: toggle(toggleLater, 3) });
-  if (P.ep) opts.push({ name: 'Episódios', fn: closePlayer });
+  if (P.ep) opts.push({ name: 'Episódios', fn: playerEpisodes });
   if (live) opts.push({ name: 'Atualizar', fn: refreshApp });
   menu('Opções', opts);
   var b = at != null && $('#menu .opt[data-i="' + at + '"]'); if (b) b.focus();
