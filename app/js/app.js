@@ -370,6 +370,7 @@ function loadAll() {
     keepList();
     groupChannels();
     markAdult();
+    sortChannels();
     status(S.live.length + ' Canais · ' + S.movies.length + ' Filmes · ' + S.series.length + ' Séries');
   });
 }
@@ -595,6 +596,13 @@ function renderHome() {
   fillHero();
 }
 
+/* channels in A-Z order, sorted once per load so every group, CH+/CH- and the preview keep it;
+ * numeric: "ESPN 2" before "ESPN 10" */
+function sortChannels() {
+  var col = window.Intl && Intl.Collator ? new Intl.Collator('pt-BR', { numeric: true, sensitivity: 'base' }) : null;
+  S.live.forEach(function (i) { i._n = i._n || norm(i.name); });
+  S.live.sort(function (a, b) { return col ? col.compare(a._n, b._n) : (a._n < b._n ? -1 : a._n > b._n ? 1 : 0); });
+}
 function liveItems(view, cat) {
   var list = S.live;
   if (cat === '__all') return list.filter(noAdult);
@@ -707,7 +715,9 @@ function stopTv() {
 }
 /* movies and series: groups stay on the left, titles on the right */
 function renderLibrary(kind) {
-  var cats = kind === 'movies' ? S.movieCats : S.seriesCats, list = kind === 'movies' ? S.movies : S.series, seen = byHistory(kind), sel = S.cat[kind] || '__all', count = {};
+  // opening on Continuar instead of Todos: a grid of the whole catalog asks for notes it doesn't need
+  var cats = kind === 'movies' ? S.movieCats : S.seriesCats, list = kind === 'movies' ? S.movies : S.series, seen = byHistory(kind), sel = S.cat[kind] || (seen.length ? '__continue' : '__all'), count = {};
+  if (sel === '__continue' && !seen.length) sel = '__all';
   if (S.hideBr) { list = list.filter(noBr); cats = cats.filter(function (c) { return !catBr(c.category_name); }); }
   var clean = list.filter(noAdult);
   if (groupAdult(kind, sel) || (S.hideBr && sel.indexOf('__') !== 0 && !cats.some(function (c) { return String(c.category_id) === sel; }))) sel = '__all';
@@ -716,8 +726,8 @@ function renderLibrary(kind) {
   $('#content').innerHTML = '<div class="lib"><div class="libtop"><input id="libQ" class="f inp" readonly type="text" autocomplete="off" placeholder="Pesquisar"><span class="muted" id="libCount"></span><div class="sortbox" role="group" aria-label="Ordenar"><button class="f sort' + (S.sort === 'year' ? ' active' : '') + '" data-sort="year">Mais Novos</button>' +
     '<button class="f sort' + (S.sort === 'stars' ? ' active' : '') + '" data-sort="stars">Mais Bem Avaliados</button><button class="f sort' + (S.hideBr ? ' active' : '') + '" id="hideBr">Ocultar Produções Brasileiras</button></div></div>' +
     '<div class="libbody"><div class="libgroups scroll" id="libGroups"></div><div class="scroll grid-wrap" id="gridWrap"></div></div></div>';
-  var rows = [{ cat: '__all', name: 'Todos', n: clean.length }, { cat: '__recent', name: 'Adicionados Recentemente', n: Math.min(300, clean.length) }];
-  if (seen.length) rows.push({ cat: '__continue', name: 'Continuar Assistindo', n: seen.length });
+  var rows = seen.length ? [{ cat: '__continue', name: 'Continuar Assistindo', n: seen.length }] : [];
+  rows.push({ cat: '__all', name: 'Todos', n: clean.length }, { cat: '__recent', name: 'Adicionados Recentemente', n: Math.min(300, clean.length) });
   rows.push({ cat: '__later', name: 'Assistir Depois', n: itemsFor(kind, '__later').length }, { cat: '__fav', name: 'Favoritos', n: itemsFor(kind, '__fav').length });
   cats.forEach(function (c) { var id = String(c.category_id); if (count[id]) rows.push({ cat: id, name: c.category_name, n: count[id], adult: catIsAdult(c.category_name) }); });
   mountGrid($('#libGroups'), rows, 'chlist', grpHTML);
