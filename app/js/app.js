@@ -1683,7 +1683,7 @@ function play(item, opts) {
   P.tv = !!(opts.mini || opts.tv);
   $('#player').classList.toggle('mini', !!opts.mini);
   P.posKey = item.kind === 'live' || item.adult ? null : (P.ep ? 'ep:' + P.ep.id : item.kind + ':' + item.id);
-  P.seek = null; P.resumed = !!opts.fromStart; P.subIdx = -1; P.cur = null; P.mediaRetry = 0; P.markStart = null; P.introDone = false; P.nextCancel = false; P.cardAt = null; P.autoSubDone = false;
+  P.seek = null; P.resumed = !!opts.fromStart; P.subIdx = -1; P.cur = null; P.mediaRetry = 0; P.markStart = null; P.introDone = false; P.nextCancel = false; P.nextHold = false; P.cardAt = null; P.autoSubDone = false;
   clearExtSubs(); hideCard(); $('#skipIntro').classList.add('hidden');
   restoreSub();
   var vs = item.kind === 'live' && item.variants ? item.variants : null;
@@ -1833,7 +1833,7 @@ function cardOpen() { return !$('#nextCard').classList.contains('hidden'); }
 function tickNext(t, d) {
   var n = nextEp();
   if (!n || d < 45) return;
-  if (d - t > 41) { if (P.cardAt != null) hideCard(); P.nextCancel = false; return; }
+  if (d - t > 41) { if (P.cardAt != null) hideCard(); P.nextCancel = false; P.nextHold = false; return; }
   if (P.nextCancel) return;
   if (P.cardAt == null) {
     P.cardAt = t;
@@ -1842,6 +1842,7 @@ function tickNext(t, d) {
     setText('#nextTitle', 'T' + n.season + ' · E' + n.num + ' · ' + n.title);
     $('#nextCard').classList.remove('hidden');
   }
+  if (P.nextHold) return; // the viewer touched the remote: only OK or the episode's end moves on
   var left = Math.ceil(10 - (t - P.cardAt));
   if (left <= 0) { goNext(); return; }
   setText('#nextCount', 'Próximo Episódio em ' + left + ' s');
@@ -2449,6 +2450,8 @@ document.addEventListener('keydown', function (e) {
   if (inPlayer) {
     var osdOn = $('#player').classList.contains('osd-on'), live = P.item && P.item.kind === 'live';
     if (k === K.ENTER && cardOpen()) { e.preventDefault(); goNext(); return; }
+    // any other key during the countdown stops it; the key still does its own job
+    if (cardOpen() && !P.nextHold) { P.nextHold = true; setText('#nextCount', 'Contagem Parada · OK: Próximo Episódio'); }
     if (k === K.PLAY || k === K.PAUSE || k === K.PLAYPAUSE) { playerAction('play'); e.preventDefault(); return; }
     if (!live && (k === K.FF || k === K.RW)) { scrubKey(k, k === K.FF ? 1 : -1); return; }
     if (k === K.STOP) { if (P.tv) leaveFull(); else closePlayer(); return; }
