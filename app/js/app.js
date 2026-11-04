@@ -1673,7 +1673,7 @@ function isHlsUrl(u) { return /\.m3u8(\?|$)|output=hls|\/hls(\?|$)/i.test(u); }
 /* a fresh <video> for each playback: releases the TV's decoder and whatever the last stream buffered */
 function destroyHls() { if (hls) { try { hls.destroy(); } catch (e) {} hls = null; } }
 function teardown() {
-  destroyHls(); clearTimeout(P.wd); scrubCancel();
+  destroyHls(); clearTimeout(P.wd); clearTimeout(P.rt); P.rt = null; scrubCancel();
   try { video.pause(); video.removeAttribute('src'); video.load(); } catch (e) {}
   var v = document.createElement('video'); v.id = 'video'; v.setAttribute('playsinline', '');
   video.parentNode.replaceChild(v, video); video = v; bindVideo(v);
@@ -1694,7 +1694,7 @@ function play(item, opts) {
   P.tv = !!(opts.mini || opts.tv);
   $('#player').classList.toggle('mini', !!opts.mini);
   P.posKey = item.kind === 'live' || item.adult ? null : (P.ep ? 'ep:' + P.ep.id : item.kind + ':' + item.id);
-  P.seek = null; P.resumed = !!opts.fromStart; P.subIdx = -1; P.cur = null; P.mediaRetry = 0; P.markStart = null; P.introDone = false; P.nextCancel = false; P.nextHold = false; P.cardAt = null; P.autoSubDone = false;
+  P.seek = null; P.resumed = !!opts.fromStart; P.subIdx = -1; P.cur = null; P.mediaRetry = 0; P.markStart = null; P.introDone = false; P.nextCancel = false; P.nextHold = false; P.cardAt = null; P.autoSubDone = false; P.dead = false; P.ok = false; P.tries = 0;
   clearExtSubs(); hideCard(); $('#skipIntro').classList.add('hidden');
   restoreSub();
   var vs = item.kind === 'live' && item.variants ? item.variants : null;
@@ -1712,13 +1712,43 @@ function play(item, opts) {
 }
 function nextAttempt() {
   var a = P.plan.shift();
-  clearTimeout(P.wd);
-  if (!a) { spinner(false); toast('Não Foi Possível Reproduzir Este Conteúdo', 4000); return; }
+  clearTimeout(P.wd); clearTimeout(P.rt); P.rt = null; P.ok = false; P.tries = 0;
+  if (!a) {
+    spinner(false); P.dead = true;
+    toast(P.item && P.item.kind === 'live' ? 'Canal Fora do Ar no Momento. Tente Mais Tarde ou Escolha Outro Canal' : 'Não Foi Possível Reproduzir Este Conteúdo', 7000);
+    return;
+  }
   if (P.cur && P.cur.label !== a.label && a.label) toast(P.cur.label + ' Falhou, Abrindo ' + a.label, 3500);
   P.cur = a;
-  P.wd = setTimeout(nextAttempt, 15000);
+  P.wd = setTimeout(fail, 15000);
   startStream(a);
 }
+/* something went wrong. Before the stream ever played: the next version right away (as always).
+ * After it played: reopen the same link up to 3 times, then the next version of the channel, then give up. */
+var RETRIES = 3;
+function fail() {
+  if (!P.item || P.dead || P.rt) return;
+  clearTimeout(P.wd);
+  if (P.posKey && video.currentTime > 5) { P.seek = video.currentTime; P.resumed = false; }
+  if (!P.ok || P.tries >= RETRIES) { destroyHls(); nextAttempt(); return; }
+  P.tries++; spinner(true); toast('Reconectando', 2500);
+  P.rt = setTimeout(reopen, P.tries === 1 ? 1000 : 3000);
+}
+function reopen() {
+  P.rt = null;
+  if (!P.item || !P.cur) return;
+  var seek = P.seek, resumed = P.resumed;
+  teardown(); P.seek = seek; P.resumed = resumed;
+  P.wd = setTimeout(fail, 12000);
+  startStream(P.cur);
+}
+/* the light check behind playback: playing, not paused, and the clock stuck for 12 s */
+setInterval(function () {
+  if (!P.item || !P.ok || P.dead || P.rt || !playerShown()) return;
+  var now = Date.now(), t = video.currentTime;
+  if (video.paused || SC.on || video.seeking || t !== P.lastT) { P.lastT = t; P.lastMove = now; if (P.tries && now - P.okSince > 60000) P.tries = 0; return; }
+  if (now - P.lastMove > 12000) fail();
+}, 2000);
 function startStream(a) {
   destroyHls();
   video.removeAttribute('src'); video.load();
@@ -1729,7 +1759,7 @@ function startStream(a) {
     hls.on(Hls.Events.ERROR, function (ev, data) {
       if (!data.fatal) return;
       if (data.type === Hls.ErrorTypes.MEDIA_ERROR && P.mediaRetry++ < 1) { hls.recoverMediaError(); return; }
-      destroyHls(); nextAttempt();
+      fail();
     });
     hls.loadSource(a.url); hls.attachMedia(video);
   } else { video.src = a.url; video.play().catch(function () {}); }
@@ -1747,6 +1777,8 @@ function upgradeToHls(then) {
 function bindVideo(v) {
   v.addEventListener('playing', function () {
     spinner(false); clearTimeout(P.wd); autoAudio();
+    if (v === video && !P.ok) { P.ok = true; P.okSince = Date.now(); }
+    P.lastT = v.currentTime; P.lastMove = Date.now();
     // H.265 the TV can't decode may play sound with no picture: try the next version
     if (P.item && P.item.kind === 'live' && v.videoWidth === 0 && P.plan.length) setTimeout(function () { if (v === video && v.videoWidth === 0) nextAttempt(); }, 2000);
   });
@@ -1759,8 +1791,14 @@ function bindVideo(v) {
     if (P.seek != null) v.currentTime = P.seek;
     else if (saved && saved.t > 60 && saved.t < v.duration - 120) { v.currentTime = saved.t; toast('Continuando de ' + fmtTime(saved.t)); }
   });
-  v.addEventListener('error', function () { if (v !== video || hls || !v.getAttribute('src')) return; nextAttempt(); });
-  v.addEventListener('ended', function () { if (P.ep && nextEp() && !P.nextCancel) goNext(); else { finish(); closePlayer(); } });
+  v.addEventListener('error', function () { if (v !== video || hls || !v.getAttribute('src')) return; fail(); });
+  v.addEventListener('ended', function () {
+    if (v !== video) return;
+    // a live stream never ends, and a movie that "ends" minutes early lost the connection
+    var d = v.duration;
+    if (P.item && (P.item.kind === 'live' || (isFinite(d) && d - v.currentTime > 60))) { fail(); return; }
+    if (P.ep && nextEp() && !P.nextCancel) goNext(); else { finish(); closePlayer(); }
+  });
   v.addEventListener('timeupdate', onTime);
 }
 var lastPosSave = 0;
