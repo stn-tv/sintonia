@@ -17,7 +17,7 @@ var S = {
   live: [], liveCats: [], movies: [], movieCats: [], series: [], seriesCats: [],
   byKey: {}, favs: load('favs', []), later: load('later', []), pos: load('pos', {}), hist: load('hist', []), intro: load('intro', {}),
   ratings: load('ratings', {}), subs: load('subs', { files: {}, last: {} }), stills: {}, sort: load('sort', 'year'), exp: '', fresh: false,
-  brs: load('brs', {}), trk: load('trk', {}), hideBr: load('hideBr', false), rem: load('rem', []), teams: load('teams', []),
+  brs: load('brs', {}), trk: load('trk', {}), org: load('org', {}), hideBr: load('hideBr', false), rem: load('rem', []), teams: load('teams', []),
   view: null, cat: {}, spot: {}, loaded: false
 };
 // notes saved before the vote rule carry the unreliable scores: they are fetched again as titles appear
@@ -343,7 +343,7 @@ function groupAdult(view, cat) {
 
 /* the ids in favorites, history and marks only mean something inside one list:
  * each list keeps its own, so changing provider never opens the wrong title and coming back restores them */
-var LIST_DATA = ['favs', 'later', 'pos', 'hist', 'intro', 'brs', 'trk'], EMPTY = { favs: [], later: [], pos: {}, hist: [], intro: {}, brs: {}, trk: {} };
+var LIST_DATA = ['favs', 'later', 'pos', 'hist', 'intro', 'brs', 'trk', 'org'], EMPTY = { favs: [], later: [], pos: {}, hist: [], intro: {}, brs: {}, trk: {}, org: {} };
 function listId() { var c = S.cfg; return c.type === 'xtream' ? 'x:' + norm(c.server) + ':' + c.user : 'm:' + norm(c.m3u); }
 function switchListData() {
   var id = listId(), was = load('listId', null);
@@ -359,6 +359,59 @@ function switchListData() {
   save('listId', id);
 }
 
+/* ================= categories: hide, order and rename, per list =================
+ * Only the viewer's choices are kept (hidden ids, words, positions, names), never the list of what shows:
+ * a new category appears on its own, marked Nova for a few days, at the end of the order. */
+var ORG_CATS = { live: 'liveCats', movies: 'movieCats', series: 'seriesCats' }, NEW_DAYS = 5;
+function orgOf(kind) {
+  var o = S.org[kind] || (S.org[kind] = {});
+  o.hide = o.hide || {}; o.words = o.words || []; o.order = o.order || []; o.names = o.names || {}; o.seen = o.seen || {};
+  return o;
+}
+function wordHit(o, name) { var n = norm(name || ''); for (var i = 0; i < o.words.length; i++) { var w = norm(o.words[i]); if (w && n.indexOf(w) >= 0) return o.words[i]; } return ''; }
+function catHidden(o, c) { var id = String(c.category_id); return !!o.hide[id] || !!wordHit(o, c.category_name) || !!(o.names[id] && wordHit(o, o.names[id])); }
+function isNewCat(kind, id) { var t = orgOf(kind).seen[id]; return t > 0 && Date.now() - t < NEW_DAYS * 864e5; }
+// the first load of a list knows every category already: only the ones that show up later count as new
+function noteSeen() {
+  var now = Date.now(), changed = false;
+  Object.keys(ORG_CATS).forEach(function (kind) {
+    var o = orgOf(kind), first = !Object.keys(o.seen).length;
+    S.raw[ORG_CATS[kind]].forEach(function (c) { var id = String(c.category_id); if (o.seen[id] == null) { o.seen[id] = first ? 0 : now; changed = true; } });
+  });
+  if (changed) save('org', S.org);
+}
+// the viewer's order first; whatever was never placed (new ones too) after it, as the list has them
+function arrange(o, cats) {
+  var pos = {}; o.order.forEach(function (id, i) { pos[id] = i; });
+  var out = cats.map(function (c, i) { var id = String(c.category_id); return { category_id: c.category_id, category_name: c.category_name, label: o.names[id] || '', _i: id in pos ? pos[id] : 1e6 + i }; });
+  return out.sort(function (a, b) { return a._i - b._i; });
+}
+function applyOrg() {
+  var R = S.raw; if (!R) return;
+  Object.keys(ORG_CATS).forEach(function (kind) {
+    var o = orgOf(kind), hid = {}, keep = [];
+    R[ORG_CATS[kind]].forEach(function (c) { if (catHidden(o, c)) hid[String(c.category_id)] = 1; else keep.push(c); });
+    S[ORG_CATS[kind]] = arrange(o, keep);
+    S[kind] = R[kind].filter(function (i) { return !hid[i.cat]; });
+  });
+  groupChannels(); sortChannels();
+  S._noiseOf = null; S.orgDirty = false;
+}
+function catRow(kind, c, n) { var id = String(c.category_id); return { cat: id, name: c.label || c.category_name, renamed: !!c.label, fresh: isNewCat(kind, id), n: n, adult: catIsAdult(c.category_name) }; }
+/* blue button on a group: it leaves the screen at once; Ajustes brings it back */
+function hideGroup(btn) {
+  var kind = S.view, id = btn.getAttribute('data-grp'), at = +btn.getAttribute('data-idx') || 0;
+  if (!ORG_CATS[kind] || !id || id.indexOf('__') === 0) { toast('Esta Categoria Não Pode Ser Escondida'); return; }
+  orgOf(kind).hide[id] = 1; save('org', S.org);
+  if (S.cat[kind] === id) S.cat[kind] = kind === 'live' ? '__groups' : '__all';
+  delete S.spot[kind + '|' + id];
+  applyOrg();
+  if (kind === 'live') showCat(kind, '__groups'); else renderLibrary(kind);
+  var col = kind === 'live' ? $('#gridWrap .chlist') : $('#libGroups .chlist');
+  if (col && col._items) { at = Math.min(at, col._items.length - 1); if (at >= col._shown) growGrid(col, at + 1); var el = col.children[at]; if (el) focusEl(el); }
+  toast('Categoria Escondida. Para Mostrar de Novo: Ajustes', 4000);
+}
+
 function loadAll() {
   S.byKey = {};
   var c = S.cfg;
@@ -368,9 +421,11 @@ function loadAll() {
     switchListData();
     S.loaded = true; S.loadError = '';
     keepList();
-    groupChannels();
     markAdult();
-    sortChannels();
+    // everything the list has stays in S.raw: hiding or showing a category again needs no new download
+    S.raw = { live: S.live, movies: S.movies, series: S.series, liveCats: S.liveCats, movieCats: S.movieCats, seriesCats: S.seriesCats };
+    noteSeen();
+    applyOrg();
     status(S.live.length + ' Canais · ' + S.movies.length + ' Filmes · ' + S.series.length + ' Séries');
   });
 }
@@ -613,7 +668,7 @@ function liveItems(view, cat) {
 function groupRows(view) {
   var n = {}, rows = [{ cat: '__all', name: 'Todos os Canais', n: liveItems(view, '__all').length }, { cat: '__fav', name: 'Favoritos', n: liveItems(view, '__fav').length }];
   S.live.forEach(function (i) { n[i.cat] = (n[i.cat] || 0) + 1; });
-  S.liveCats.forEach(function (c) { var id = String(c.category_id); if (n[id]) rows.push({ cat: id, name: c.category_name, n: n[id], adult: catIsAdult(c.category_name) }); });
+  S.liveCats.forEach(function (c) { var id = String(c.category_id); if (n[id]) rows.push(catRow('live', c, n[id])); });
   return rows;
 }
 /* what most groups of a list repeat is noise on screen ("Filmes | Terror⚡PLUS" inside Filmes). It is worked out
@@ -640,7 +695,7 @@ function shortGroup(name) {
   if (noise.tail) { var i = s.toLowerCase().lastIndexOf(noise.tail.toLowerCase()); if (i > 0 && !/[A-Za-z0-9À-ɏ]/.test(s.slice(i + noise.tail.length))) s = s.slice(0, i).replace(/[^A-Za-z0-9À-ɏ)\]]+$/, ''); }
   return s.trim() || name;
 }
-function grpHTML(g, idx) { return '<button class="f grp' + (S.cat[S.view] === g.cat ? ' active' : '') + '" data-grp="' + esc(g.cat) + '" data-idx="' + idx + '"><span>' + esc(shortGroup(g.name)) + '</span>' + (g.adult && S.cfg.adultLock ? LOCK : '') + '<b>' + g.n + '</b></button>'; }
+function grpHTML(g, idx) { return '<button class="f grp' + (S.cat[S.view] === g.cat ? ' active' : '') + '" data-grp="' + esc(g.cat) + '" data-idx="' + idx + '"><span>' + esc(g.renamed ? g.name : shortGroup(g.name)) + '</span>' + (g.fresh ? '<i class="newtag">Nova</i>' : '') + (g.adult && S.cfg.adultLock ? LOCK : '') + '<b>' + g.n + '</b></button>'; }
 var LOCK = '<svg class="lock" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-label="Bloqueado"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
 /* an adult group asks for the password every time it is opened: nothing stays unlocked */
 function openGroup(view, cat, from) {
@@ -729,7 +784,7 @@ function renderLibrary(kind) {
   var rows = seen.length ? [{ cat: '__continue', name: 'Continuar Assistindo', n: seen.length }] : [];
   rows.push({ cat: '__all', name: 'Todos', n: clean.length }, { cat: '__recent', name: 'Adicionados Recentemente', n: Math.min(300, clean.length) });
   rows.push({ cat: '__later', name: 'Assistir Depois', n: itemsFor(kind, '__later').length }, { cat: '__fav', name: 'Favoritos', n: itemsFor(kind, '__fav').length });
-  cats.forEach(function (c) { var id = String(c.category_id); if (count[id]) rows.push({ cat: id, name: c.category_name, n: count[id], adult: catIsAdult(c.category_name) }); });
+  cats.forEach(function (c) { var id = String(c.category_id); if (count[id]) rows.push(catRow(kind, c, count[id])); });
   mountGrid($('#libGroups'), rows, 'chlist', grpHTML);
   var at = rows.map(rowId).indexOf(sel), col = $('#libGroups .chlist');
   if (col && at >= col._shown) growGrid(col, at + 1);
@@ -1200,6 +1255,7 @@ function setPanel(sec) {
     return KEY_FIELDS.filter(function (k) { return names.indexOf(k[0]) >= 0; }).map(function (k) { return '<label>' + k[1] + '</label><input class="f inp" readonly id="k_' + k[0] + '" type="password" value="' + esc(c[k[0]]) + '" style="width:100%">'; }).join('') +
       '<div class="row"><button class="f btn" id="saveKeys">Salvar Chaves</button></div>';
   }
+  if (S.orgKind && (sec === 'channels' || sec === 'library')) return orgPanel(S.orgKind);
   if (sec === 'lists') {
     if (S.draft) return listForm(S.draft);
     return '<h2 class="settitle">Listas</h2>' + (S.lists.length ? S.lists.map(listRow).join('') : '<p class="note">Nenhuma Lista Adicionada</p>') +
@@ -1207,7 +1263,8 @@ function setPanel(sec) {
   }
   if (sec === 'channels') return '<h2 class="settitle">Canais</h2>' +
     row('Qualidade', seg('quality', [['all', 'Todas'], ['fhd265', 'Priorizar FHD H.265'], ['h265', 'Só H.265']])) +
-    row('Formato', seg('liveFormat', [['m3u8', 'HLS'], ['ts', 'TS']]));
+    row('Formato', seg('liveFormat', [['m3u8', 'HLS'], ['ts', 'TS']])) +
+    row('Categorias', '<button class="f btn" data-org="live">Organizar Categorias</button>');
   if (sec === 'av') return '<h2 class="settitle">Áudio e Legenda</h2>' +
     row('Áudio Preferido', seg('prefAudio', [['pt', 'Português'], ['en', 'Inglês'], ['', 'Padrão do Vídeo']])) +
     row('Legenda Preferida', seg('prefSub', [['pt-br', 'Português'], ['en', 'Inglês']])) +
@@ -1215,6 +1272,7 @@ function setPanel(sec) {
   if (sec === 'library') return '<h2 class="settitle">Filmes e Séries</h2>' +
     row('Classificação', '<button class="f btn dropbtn" id="rateSrc"><span>' + esc(rateLabel()) + '</span><i></i></button>') +
     row('Histórico', '<button class="f btn" id="clearSeen">Limpar Assistidos</button>') +
+    row('Categorias', '<button class="f btn" data-org="movies">Organizar Filmes</button><button class="f btn" data-org="series">Organizar Séries</button>') +
     '<h2 class="settitle">Chaves de Notas</h2>' + keys(['tmdbKey', 'omdbKey']);
   if (sec === 'adult') return '<h2 class="settitle">Conteúdo Adulto</h2>' +
     '<div class="row"><button class="f btn" id="adultLock">Bloqueio com Senha: ' + (c.adultLock ? 'ligado' : 'desligado') + '</button><button class="f btn" id="adultPin">Trocar Senha</button></div>';
@@ -1228,10 +1286,62 @@ function renderSettings() {
 }
 function showSec(sec) {
   if (sec === S.setSec) return;
-  S.setSec = sec; S.draft = null;
+  S.setSec = sec; S.draft = null; S.orgKind = null;
   $$('.setsec').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-sec') === sec); });
   $('#setMain').innerHTML = setPanel(sec); $('.setscroll').scrollTop = 0;
 }
+/* Ajustes > Organizar: every category of the list, hidden ones included */
+var ORG_TITLE = { live: 'Canais', movies: 'Filmes', series: 'Séries' };
+function orgPanel(kind) {
+  var o = orgOf(kind), cats = S.raw ? arrange(o, S.raw[ORG_CATS[kind]]) : [];
+  var html = '<h2 class="settitle">Categorias de ' + ORG_TITLE[kind] + '</h2>' +
+    '<p class="note">OK em Visível ou Escondida Troca. Subir e Descer Mudam a Posição. OK no Nome Renomeia (Vazio Volta ao Original). Novas Entram no Final.</p>' +
+    '<div class="setrow"><span class="setlabel">Esconder por Palavra</span><input class="f inp" readonly id="orgWords" type="text" autocomplete="off" placeholder="Ex.: Rádio, ESPAÑA" value="' + esc(o.words.join(', ')) + '"></div>' +
+    '<div class="row"><button class="f btn" id="orgBack">Voltar</button><button class="f btn" id="orgShowAll">Mostrar Todas</button><button class="f btn" id="orgReset">Ordem Original</button></div>';
+  if (!cats.length) return html + '<p class="note">Nenhuma Categoria Nesta Lista</p>';
+  return html + cats.map(function (c) {
+    var id = String(c.category_id), w = wordHit(o, c.category_name) || (c.label && wordHit(o, c.label)), off = !!o.hide[id] || !!w;
+    return '<div class="setrow orgrow" data-oc="' + esc(id) + '"><button class="f btn orgvis' + (off ? '' : ' on') + '" data-ov="' + esc(id) + '">' + (w ? 'Palavra: ' + esc(w) : off ? 'Escondida' : 'Visível') + '</button>' +
+      '<input class="f inp orgname" readonly type="text" autocomplete="off" data-on="' + esc(id) + '" data-orig="' + esc(c.category_name) + '" value="' + esc(c.label || c.category_name) + '">' +
+      (isNewCat(kind, id) ? '<i class="newtag">Nova</i>' : '') +
+      '<button class="f btn orgmv" data-om="-1">Subir</button><button class="f btn orgmv" data-om="1">Descer</button></div>';
+  }).join('');
+}
+function openOrg(kind) { S.orgKind = kind; $('#setMain').innerHTML = setPanel(S.setSec); $('.setscroll').scrollTop = 0; focusPanel(); }
+function closeOrg() {
+  var kind = S.orgKind; S.orgKind = null;
+  if (S.orgDirty) applyOrg();
+  $('#setMain').innerHTML = setPanel(S.setSec);
+  var b = $('[data-org="' + kind + '"]'); if (b) focusEl(b); else focusPanel();
+}
+function orgDirty() { S.orgDirty = true; save('org', S.org); }
+function orgRefill(focusId) { $('#setMain').innerHTML = setPanel(S.setSec); var b = $('#' + focusId); if (b) focusEl(b); }
+function orgToggle(t) {
+  var o = orgOf(S.orgKind), id = t.getAttribute('data-ov'), inp = $('.orgname', t.closest('.orgrow'));
+  var w = wordHit(o, inp.getAttribute('data-orig')) || (o.names[id] && wordHit(o, o.names[id]));
+  if (w) { toast('Escondida pela Palavra "' + w + '". Tire a Palavra para Mostrar', 3500); return; }
+  if (o.hide[id]) delete o.hide[id]; else o.hide[id] = 1;
+  t.classList.toggle('on', !o.hide[id]); t.textContent = o.hide[id] ? 'Escondida' : 'Visível';
+  orgDirty();
+}
+function orgMove(t) {
+  var row = t.closest('.orgrow'), dir = +t.getAttribute('data-om'), other = dir < 0 ? row.previousElementSibling : row.nextElementSibling;
+  if (!other || !other.classList.contains('orgrow')) return;
+  row.parentNode.insertBefore(row, dir < 0 ? other : other.nextSibling);
+  orgOf(S.orgKind).order = $$('.orgrow').map(function (r) { return r.getAttribute('data-oc'); });
+  orgDirty(); focusEl(t);
+}
+function orgRename(inp) {
+  var o = orgOf(S.orgKind), id = inp.getAttribute('data-on'), orig = inp.getAttribute('data-orig'), v = inp.value.trim();
+  if (!v || v === orig) { delete o.names[id]; inp.value = orig; } else o.names[id] = v;
+  orgDirty();
+}
+function orgWords(inp) {
+  var o = orgOf(S.orgKind), seen = {};
+  o.words = inp.value.split(',').map(function (w) { return w.trim(); }).filter(function (w) { var n = norm(w); if (!n || seen[n]) return false; seen[n] = 1; return true; });
+  orgDirty(); orgRefill('orgWords');
+}
+
 function focusPanel() { var f = $('#setMain .f'); if (f) focusEl(f); }
 /* update on request: same check the shell runs in the background (casca/casca-update.js), then reopens on the new copy.
  * It lives here because this file updates over the air and the shell only with a new .ipk */
@@ -1402,6 +1512,7 @@ function go(view) {
   $$('.nav').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-view') === view); });
   $('#viewTitle').textContent = view === 'home' ? greeting() : TITLES[view];
   if (view === 'games') { renderGames(); status(''); return; }
+  if (S.orgDirty) applyOrg();
   if (view !== 'settings' && !S.loaded) {
     $('#content').innerHTML = S.loadError ? '<div class="empty">Não Consegui Carregar Sua Lista: ' + esc(S.loadError) + '<br>Ela Continua Salva.</div><button class="f btn primary" id="reload">Tentar de Novo</button>'
       : '<div class="empty">Nenhuma Lista Carregada Ainda.<br>Adicione Sua Lista pelo Celular, com Login Xtream ou Link M3U.</div><button class="f btn primary" data-go="settings">Adicionar Lista</button>';
@@ -2471,6 +2582,7 @@ function onBack() {
   if (!$('#remote').classList.contains('hidden')) { closeRemote(); return; }
   if (!$('#detail').classList.contains('hidden')) { closeDetail(); return; }
   if (S.draft) { closeDraft(); return; }
+  if (S.orgKind && S.view === 'settings') { closeOrg(); return; }
   if (S.view === 'settings' && ed && ed.closest('.sets')) { $('.setsec.on').focus(); return; }
   // deep inside a group, Voltar first goes back to its top; from the top, it goes to the group list
   if (ed && ed.closest && ed.closest('#gridWrap') && +ed.getAttribute('data-idx') > 0 && S.cat[S.view] !== '__groups') {
@@ -2533,6 +2645,7 @@ document.addEventListener('keydown', function (e) {
 
   var key = a && a.getAttribute && a.getAttribute('data-key');
   if (!key && !$('#detail').classList.contains('hidden') && $('#detail')._item) key = $('#detail')._item.kind + ':' + $('#detail')._item.id;
+  if (k === K.BLUE) { if (a && a.classList.contains('grp')) hideGroup(a); return; }
   if (k === K.RED) { if (key) { toggleFav(key); setText2('#dFav', favLabel(key)); } return; }
   if (k === K.GREEN) { if (key) { toggleLater(key); setText2('#dLater', laterLabel(key)); } return; }
   if (inInput && (k === K.LEFT || k === K.RIGHT)) return;
@@ -2597,6 +2710,12 @@ document.addEventListener('click', function (e) {
     save('cfg', S.cfg); return;
   }
   if (t.id === 'saveKeys') { saveKeys(); return; }
+  if (t.hasAttribute('data-org')) { openOrg(t.getAttribute('data-org')); return; }
+  if (t.id === 'orgBack') { closeOrg(); return; }
+  if (t.classList.contains('orgvis')) { orgToggle(t); return; }
+  if (t.classList.contains('orgmv')) { orgMove(t); return; }
+  if (t.id === 'orgShowAll') { var oa = orgOf(S.orgKind); oa.hide = {}; oa.words = []; orgDirty(); orgRefill('orgShowAll'); toast('Todas as Categorias Visíveis'); return; }
+  if (t.id === 'orgReset') { orgOf(S.orgKind).order = []; orgDirty(); orgRefill('orgReset'); toast('Ordem Original da Lista'); return; }
   if (t.id === 'checkUpdate') { checkUpdate(); return; }
   if (t.id === 'reload') { reload(); return; }
   if (t.id === 'openRemote') { openRemote(); return; }
@@ -2629,6 +2748,7 @@ document.addEventListener('click', function (e) {
 });
 document.addEventListener('focusin', function (e) { noteSpot(e.target); if (e.target.classList && e.target.classList.contains('setsec')) showSec(e.target.getAttribute('data-sec')); });
 document.addEventListener('input', function (e) { if (e.target.id === 'libQ') typedSearch(e.target.value); });
+document.addEventListener('change', function (e) { var t = e.target; if (!S.orgKind) return; if (t.id === 'orgWords') orgWords(t); else if (t.classList.contains('orgname')) orgRename(t); });
 document.addEventListener('focusout', function (e) { if (e.target.matches && e.target.matches('input.inp')) e.target.readOnly = true; });
 // the keyboard closed by its own buttons: lock the box again so the arrows keep navigating
 document.addEventListener('keyboardStateChange', function (e) {
