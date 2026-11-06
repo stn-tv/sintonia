@@ -34,7 +34,7 @@ function seriesInfo(id) {
   var eps = {}, base = (id - 5000) * 100 + 20000;
   [1, 2].forEach(function (s) {
     eps[s] = [];
-    for (var e = 1; e <= 3; e++) eps[s].push({ id: String(base + s * 10 + e), title: 'Episódio ' + e, episode_num: e, container_extension: 'mp4', info: { plot: 'Episódio fictício.' } });
+    for (var e = 1; e <= 3; e++) eps[s].push({ id: String(base + s * 10 + e), title: 'Episódio ' + e, episode_num: e, container_extension: 'mp4', info: { plot: 'Episódio fictício.', movie_image: e === 2 ? '/mock/capa.png?ep' : '' } });
   });
   return { info: { plot: 'Sinopse fictícia usada apenas em testes.' }, episodes: eps };
 }

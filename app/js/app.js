@@ -1631,14 +1631,19 @@ function loadStills(item, s) {
   var ck = item.id + '|' + s;
   function apply(map) { $$('#dEps img[data-ep]').forEach(function (img) { var e = $('#detail')._eps[+img.parentNode.parentNode.getAttribute('data-i')]; if (e && map[e.num] && !e.img) img.src = map[e.num]; }); }
   if (S.stills[ck]) return apply(S.stills[ck]);
-  if (!S.cfg.tmdbKey) return;
-  getRatings(item).then(function (r) {
+  getStills(item, s).then(function (map) { if (map && $('#detail')._item === item) apply(map); });
+}
+function getStills(item, s) {
+  var ck = item.id + '|' + s;
+  if (S.stills[ck]) return Promise.resolve(S.stills[ck]);
+  if (!S.cfg.tmdbKey) return Promise.resolve(null);
+  return getRatings(item).then(function (r) {
     if (!r || !r.tmdbId) return null;
     return tmdbFetch('/tv/' + r.tmdbId + '/season/' + s).then(function (x) {
       var map = {}; (x.episodes || []).forEach(function (e) { if (e.still_path) map[e.episode_number] = 'https://image.tmdb.org/t/p/w500' + e.still_path; });
-      S.stills[ck] = map; if ($('#detail')._item === item) apply(map);
+      return (S.stills[ck] = map);
     });
-  }).catch(function () {});
+  }).catch(function () { return null; });
 }
 /* password pad: works with the pointer, the arrows or the remote's number keys */
 function askPin(title, done, free) {
@@ -1772,9 +1777,11 @@ function refreshApp() {
 var video = $('#video'), hls = null, P = { item: null, list: null, index: 0, subs: null, subIdx: -1, subOffset: 0, posKey: null, plan: [], cur: null };
 var osdT;
 function showOSD(stay) {
-  var p = $('#player'); p.classList.add('osd-on'); paintTime();
-  if (!p.contains(document.activeElement) || document.activeElement === document.body) { var b = $('.pbtn[data-act="play"]'); b.focus(); }
-  clearTimeout(osdT); if (!stay) osdT = setTimeout(hideOSD, 5000);
+  var p = $('#player'), live = P.item && P.item.kind === 'live'; p.classList.add('osd-on'); paintTime();
+  // live shows only the channel banner: nothing to select, it always leaves by itself
+  if (live) { if (p.contains(document.activeElement)) document.activeElement.blur(); }
+  else if (!p.contains(document.activeElement) || document.activeElement === document.body) { var b = $('.pbtn[data-act="play"]'); b.focus(); }
+  clearTimeout(osdT); if (!stay || live) osdT = setTimeout(hideOSD, live ? 4000 : 5000);
 }
 function hideOSD() { if (!$('#menu').classList.contains('hidden')) return; $('#player').classList.remove('osd-on'); document.activeElement && document.activeElement.blur(); }
 function spinner(on) { $('#spinner').classList.toggle('hidden', !on); }
@@ -1814,6 +1821,8 @@ function play(item, opts) {
   else P.plan = planFor(P.ep ? P.ep.url : item.url, '');
   setText('#osdTitle', P.ep ? item.name + ' · T' + P.ep.season + ' · E' + P.ep.num : item.name);
   setText('#osdNow', item.kind === 'live' ? (item.catName || '') : (P.ep ? P.ep.title : ''));
+  $('#player').classList.toggle('live', item.kind === 'live');
+  var lg = $('#osdLogo'); lg.innerHTML = item.kind === 'live' ? logoBox(item) : ''; var li = lg.querySelector('img'); if (li) reveal(li);
   $('#tDur').textContent = ''; $('#tCur').textContent = ''; $('#barFill').style.width = '0';
   $('#player').classList.remove('hidden'); $('#menu').classList.add('hidden');
   setButtons();
@@ -2003,8 +2012,7 @@ function tickNext(t, d) {
   if (P.nextCancel) return;
   if (P.cardAt == null) {
     P.cardAt = t;
-    var map = S.stills[P.item.id + '|' + n.season], th = $('#nextThumb');
-    if (map && map[n.num]) th.src = map[n.num]; else th.removeAttribute('src');
+    nextThumb(n);
     setText('#nextTitle', 'T' + n.season + ' · E' + n.num + ' · ' + n.title);
     $('#nextCard').classList.remove('hidden');
   }
@@ -2012,6 +2020,19 @@ function tickNext(t, d) {
   var left = Math.ceil(10 - (t - P.cardAt));
   if (left <= 0) { goNext(); return; }
   setText('#nextCount', 'Próximo Episódio em ' + left + ' s');
+}
+/* the list's own picture first, then TMDB (one season lookup, only if the list has none); no picture: the card goes without it */
+function nextThumb(n) {
+  var th = $('#nextThumb'), item = P.item;
+  function set(url, alt) {
+    th._px = 0; th._art = 0; $('#nextCard').classList.remove('noimg'); th.setAttribute('data-alts', alt || '');
+    if (url) { th.style.display = ''; th.setAttribute('data-src', url); reveal(th); }
+    else { th.style.display = 'none'; th.removeAttribute('data-src'); th.removeAttribute('src'); }
+  }
+  var map = S.stills[item.id + '|' + n.season];
+  if (n.img) { set(thumb(n.img, 500), map && map[n.num]); return; }
+  set(map && map[n.num]);
+  if (!map) getStills(item, n.season).then(function (m) { if (m && m[n.num] && P.item === item && cardOpen() && nextEp() === n) set(m[n.num]); });
 }
 function cancelNext() { P.nextCancel = true; hideCard(); }
 function goNext() {
@@ -2574,7 +2595,8 @@ function onBack() {
   if (playerOpen()) {
     if (cardOpen()) { cancelNext(); return; }
     if (!$('#menu').classList.contains('hidden')) { var mb = $('#menu')._back; if (mb) mb(); else closeMenu(); return; }
-    if ($('#player').classList.contains('osd-on')) { $('#player').classList.remove('osd-on'); document.activeElement.blur(); return; }
+    // on live the banner is only information: Voltar leaves right away
+    if ($('#player').classList.contains('osd-on') && !(P.item && P.item.kind === 'live')) { $('#player').classList.remove('osd-on'); document.activeElement.blur(); return; }
     if (P.tv) leaveFull(); else closePlayer();
     return;
   }
@@ -2627,6 +2649,8 @@ document.addEventListener('keydown', function (e) {
     if (k === K.GREEN) { toggleLater(introKey()); return; }
     if (k === K.YELLOW) { markIntro(); return; }
     if (k === K.BLUE && live) { refreshApp(); return; }
+    // live has no options: OK, arrows and any other key only show the channel banner
+    if (live) { e.preventDefault(); showOSD(); return; }
     if (!live && !inInput && k >= 48 && k <= 57) { e.preventDefault(); scrubTo((k - 48) / 10); return; }
     // the seek bar shows without a button selected: the arrows keep seeking until OK or up/down picks one
     if (!osdOn || a === document.body || !a || !$('#player').contains(a)) {
