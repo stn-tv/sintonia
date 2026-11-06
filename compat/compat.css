@@ -32,6 +32,7 @@
 /* gap em flex */
 .home > * + *, .side > * + *, .lib > * + *, .tvleft > * + *, .tvright > * + *, .form > * + *, .chlist > * + *, .picklist > * + *, .pickbox > * + *,
 .seasons > * + *, .dhead > * + *, .dlower > * + *, .osd-bottom > * + *, #menu > * + *, #remind > * + *, #epgList > * + *, .rleft > * + *, .rright > * + * { margin-top: 14px; }
+.libright > * + * { margin-top: 10px; }
 .hero-row > * + *, .hero-act > * + *, .libtop > * + *, .libbody > * + *, .sortbox > * + *, .chips > * + *, .row > * + *, .osd-buttons > * + *, .homefoot > * + *,
 .tvhead > * + *, .seasons > * + *, .gteam > * + *, .ch > * + *, .pick > * + *, .dtop > * + *, .grp > * + *, .dbtn > * + *, .epgrow > * + * { margin-left: 16px; margin-top: 0; }
 .setrow > * + *, .dropbtn > * + * { margin-left: 24px; margin-top: 0; }

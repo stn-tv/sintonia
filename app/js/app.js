@@ -18,7 +18,7 @@ var S = {
   byKey: {}, favs: load('favs', []), later: load('later', []), pos: load('pos', {}), hist: load('hist', []), intro: load('intro', {}),
   ratings: load('ratings', {}), subs: load('subs', { files: {}, last: {} }), stills: {}, sort: load('sort', 'year'), exp: '', fresh: false,
   brs: load('brs', {}), trk: load('trk', {}), org: load('org', {}), hideBr: load('hideBr', false), rem: load('rem', []), teams: load('teams', []),
-  view: null, cat: {}, spot: {}, loaded: false
+  view: null, cat: {}, genre: {}, spot: {}, loaded: false
 };
 // notes saved before the vote rule carry the unreliable scores: they are fetched again as titles appear
 if (load('ratingsV', 0) < 2) { S.ratings = {}; save('ratings', {}); save('ratingsV', 2); }
@@ -260,14 +260,14 @@ function loadXtream() {
   }).then(function (vod) {
     var cm = catMap(S.movieCats);
     S.movies = (vod || []).map(function (s) { return register({ kind: 'movie', id: s.stream_id, name: s.name, logo: s.stream_icon, cat: String(s.category_id), catName: cm[s.category_id] || '',
-      rating: parseFloat(s.rating) || 0, year: s.year || yearOf(s.name), ext: s.container_extension || 'mp4', added: +s.added || 0,
+      rating: parseFloat(s.rating) || 0, year: s.year || yearOf(s.name), genres: genresOf(s.genre), ext: s.container_extension || 'mp4', added: +s.added || 0,
       url: xbase() + '/movie/' + S.cfg.user + '/' + S.cfg.pass + '/' + s.stream_id + '.' + (s.container_extension || 'mp4') }); });
     status('Carregando Séries');
     return getJSON(xurl('get_series'));
   }).then(function (ser) {
     var cm = catMap(S.seriesCats);
     S.series = (ser || []).map(function (s) { return register({ kind: 'series', id: s.series_id, name: s.name, logo: s.cover, cat: String(s.category_id), catName: cm[s.category_id] || '',
-      rating: parseFloat(s.rating) || 0, year: (s.releaseDate || s.release_date || '').slice(0, 4) || yearOf(s.name), plot: s.plot, added: +s.last_modified || 0 }); });
+      rating: parseFloat(s.rating) || 0, year: (s.releaseDate || s.release_date || '').slice(0, 4) || yearOf(s.name), plot: s.plot, genres: genresOf(s.genre), added: +s.last_modified || 0 }); });
   });
 }
 
@@ -722,6 +722,35 @@ function byHistory(kind) {
   S.hist.forEach(function (h) { var i = S.byKey[h.key]; if (i && i.kind === want) out.push(i); });
   return out;
 }
+/* genres come with the list (Xtream sends them for series), in any language and separator: one name per genre on screen */
+var GENRE_NAMES = { comedia: 'Comédia', comedy: 'Comédia', drama: 'Drama', acao: 'Ação', action: 'Ação', aventura: 'Aventura', adventure: 'Aventura',
+  animacao: 'Animação', animation: 'Animação', anime: 'Anime', crime: 'Crime', policial: 'Crime', documentario: 'Documentário', documentary: 'Documentário',
+  familia: 'Família', family: 'Família', infantil: 'Infantil', kids: 'Infantil', fantasia: 'Fantasia', fantasy: 'Fantasia',
+  'ficcao cientifica': 'Ficção Científica', ficcao: 'Ficção Científica', 'sci fi': 'Ficção Científica', scifi: 'Ficção Científica', 'science fiction': 'Ficção Científica',
+  terror: 'Terror', horror: 'Terror', misterio: 'Mistério', mystery: 'Mistério', romance: 'Romance', suspense: 'Suspense', thriller: 'Suspense',
+  guerra: 'Guerra', war: 'Guerra', politica: 'Política', politics: 'Política', faroeste: 'Faroeste', western: 'Faroeste', reality: 'Reality', 'reality show': 'Reality',
+  historia: 'História', history: 'História', musica: 'Música', music: 'Música', musical: 'Música', novela: 'Novela', soap: 'Novela', news: 'Notícias', noticias: 'Notícias',
+  'talk show': 'Talk Show', talk: 'Talk Show', biografia: 'Biografia', biography: 'Biografia', esporte: 'Esporte', esportes: 'Esporte', sport: 'Esporte' };
+var genreMemo = {};
+function genresOf(text) {
+  if (!text) return null;
+  var key = String(text); if (genreMemo[key] !== undefined) return genreMemo[key];
+  var out = [];
+  key.split(/\s*(?:[,\/|;&]| e | and )\s*/i).forEach(function (g) {
+    var n = norm(g).replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim(); if (!n || n.length > 30) return;
+    var name = GENRE_NAMES[n] || g.trim().replace(/(^|\s)\S/g, function (c) { return c.toUpperCase(); });
+    if (out.indexOf(name) < 0) out.push(name);
+  });
+  return (genreMemo[key] = out.length ? out : null);
+}
+/* the genres of the open group, the most common first; fewer than two gives no row */
+function genreChips(items) {
+  var n = {}, names = [];
+  items.forEach(function (it) { (it.genres || []).forEach(function (g) { if (!n[g]) { n[g] = 0; names.push(g); } n[g]++; }); });
+  if (names.length < 2) return [];
+  return names.sort(function (a, b) { return n[b] - n[a] || a.localeCompare(b); });
+}
+function inGenre(g) { return function (it) { return !!it.genres && it.genres.indexOf(g) >= 0; }; }
 function itemsFor(kind, cat) {
   var list = kind === 'movies' ? S.movies : S.series, out;
   if (cat.indexOf('__') === 0) list = list.filter(noAdult);
@@ -780,7 +809,7 @@ function renderLibrary(kind) {
   list.forEach(function (i) { count[i.cat] = (count[i.cat] || 0) + 1; });
   $('#content').innerHTML = '<div class="lib"><div class="libtop"><input id="libQ" class="f inp" readonly type="text" autocomplete="off" placeholder="Pesquisar"><span class="muted" id="libCount"></span><div class="sortbox" role="group" aria-label="Ordenar"><button class="f sort' + (S.sort === 'year' ? ' active' : '') + '" data-sort="year">Mais Novos</button>' +
     '<button class="f sort' + (S.sort === 'stars' ? ' active' : '') + '" data-sort="stars">Mais Bem Avaliados</button><button class="f sort' + (S.hideBr ? ' active' : '') + '" id="hideBr">Ocultar Produções Brasileiras</button></div></div>' +
-    '<div class="libbody"><div class="libgroups scroll" id="libGroups"></div><div class="scroll grid-wrap" id="gridWrap"></div></div></div>';
+    '<div class="libbody"><div class="libgroups scroll" id="libGroups"></div><div class="libright"><div class="chips genres hidden" id="genres"></div><div class="scroll grid-wrap" id="gridWrap"></div></div></div></div>';
   var rows = seen.length ? [{ cat: '__continue', name: 'Continuar Assistindo', n: seen.length }] : [];
   rows.push({ cat: '__all', name: 'Todos', n: clean.length }, { cat: '__recent', name: 'Adicionados Recentemente', n: Math.min(300, clean.length) });
   rows.push({ cat: '__later', name: 'Assistir Depois', n: itemsFor(kind, '__later').length }, { cat: '__fav', name: 'Favoritos', n: itemsFor(kind, '__fav').length });
@@ -793,7 +822,9 @@ function renderLibrary(kind) {
 }
 /* search inside the open group, narrowing at every letter: titles that start with it first, then any word that does */
 function searched(kind, cat) {
-  var items = itemsFor(kind, cat), q = norm(S.q), out = items;
+  var items = itemsFor(kind, cat), q = norm(S.q), g = S.genre[kind];
+  if (g) items = items.filter(inGenre(g));
+  var out = items;
   if (q) {
     var safe = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), first = new RegExp('^[^a-z0-9]*' + safe), word = new RegExp('(^|[^a-z0-9])' + safe), a = [], b = [];
     items.forEach(function (it) { var n = it._n || (it._n = norm(it.name)); if (first.test(n)) a.push(it); else if (word.test(n)) b.push(it); });
@@ -808,17 +839,26 @@ function typedSearch(v) {
   qT = setTimeout(function () { S.q = v; var w = $('#gridWrap'); w.scrollTop = 0; mountGrid(w, searched(S.view, S.cat[S.view]), 'posters', posterHTML); }, 150);
 }
 function showCat(kind, cat) {
-  if (cat !== S.cat[kind]) S.q = '';
+  if (cat !== S.cat[kind]) { S.q = ''; S.genre[kind] = ''; }
   S.cat[kind] = cat; S.spotOff = groupAdult(kind, cat);
   $$('.grp').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-grp') === cat); });
   var wrap = $('#gridWrap'), tv = kind === 'live'; wrap.scrollTop = 0;
   if (cat === '__groups') { var rows = groupRows(kind); mountGrid(wrap, rows, 'chlist', grpHTML); setText('#tvPath', pathLabel(kind, cat, rows.length)); return; }
   var inp = $('#libQ'), active = $('.grp.active span');
   if (inp) { inp.value = S.q || ''; inp.placeholder = 'Pesquisar em ' + (active ? active.textContent : 'Todos'); }
+  if (!tv) paintGenres(kind, cat);
   var items = tv ? liveItems(kind, cat) : searched(kind, cat);
   mountGrid(wrap, items, tv ? 'chlist' : 'posters', tv ? chHTML : posterHTML);
   if (tv) setText('#tvPath', pathLabel(kind, cat, items.length));
   else if (S.sort === 'stars') warmStars(kind, cat, items);
+}
+/* a row of genres above the titles of the open group; it starts on "Todos os Gêneros" every time the group changes */
+function paintGenres(kind, cat) {
+  var box = $('#genres'); if (!box) return;
+  var list = cat === '__continue' ? [] : genreChips(itemsFor(kind, cat)), g = S.genre[kind] || '';
+  if (g && list.indexOf(g) < 0) g = S.genre[kind] = '';
+  box.classList.toggle('hidden', !list.length);
+  box.innerHTML = list.length ? [''].concat(list).map(function (x) { return '<button class="f chip genre' + (x === g ? ' active' : '') + '" data-genre="' + esc(x) + '">' + esc(x || 'Todos os Gêneros') + '</button>'; }).join('') : '';
 }
 /* "Mais Bem Avaliados" can only order titles whose note is known: look up the first ones of the group
  * and put the grid back in order once, while the viewer is still at its top */
@@ -2724,6 +2764,12 @@ document.addEventListener('click', function (e) {
   if (t.id === 'listCancel') { closeDraft(); return; }
   if (t.classList.contains('resume')) { resumeChoice(t.getAttribute('data-r')); return; }
   if (t.classList.contains('pick')) { var pk = $('#pick'), pl = pk._items, pi = +t.getAttribute('data-i'); closePick(); play(pl[pi], { list: pl, index: pi }); return; }
+  if (t.classList.contains('genre')) {
+    S.genre[S.view] = t.getAttribute('data-genre'); delete S.spot[S.view + '|' + S.cat[S.view]];
+    $$('.genre').forEach(function (b) { b.classList.toggle('active', b === t); });
+    var gw = $('#gridWrap'); gw.scrollTop = 0; mountGrid(gw, searched(S.view, S.cat[S.view]), 'posters', posterHTML);
+    return;
+  }
   if (t.id === 'hideBr') { S.hideBr = !S.hideBr; save('hideBr', S.hideBr); renderLibrary(S.view); $('#hideBr').focus(); return; }
   if (t.classList.contains('sort')) { S.sort = t.getAttribute('data-sort'); save('sort', S.sort); $$('[data-sort]').forEach(function (b) { b.classList.toggle('active', b === t); }); delete S.spot[S.view + '|' + S.cat[S.view]]; showCat(S.view, S.cat[S.view] || '__all'); return; }
   if (t.classList.contains('pbtn')) { playerAction(t.getAttribute('data-act')); return; }

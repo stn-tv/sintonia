@@ -79,6 +79,9 @@ button { background: none; border: 0; }
 #libQ { flex: 1; min-width: 0; height: 66px; padding: 0 22px; font-size: 26px; }
 #libCount { flex-shrink: 0; white-space: nowrap; }
 .libbody { display: flex; flex: 1; min-height: 0; gap: 24px; }
+.libright { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.chips.genres { flex: none; overflow: hidden; padding: 6px 6px 2px; }
+.genres .chip { font-size: 22px; padding: 10px 20px; }
 .libgroups { width: 470px; flex-shrink: 0; padding: 6px 8px 40px; }
 .libbody .posters { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 22px; }
 .grp.active { background: #0a2a4d; color: #fff; }

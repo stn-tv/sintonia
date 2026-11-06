@@ -29,7 +29,7 @@ live.push({ stream_id: n++, name: 'Band News', stream_icon: '', category_id: '3'
 for (var i = 0; i < 400; i++) vod.push({ stream_id: 1000 + i, name: 'Filme de Teste ' + (i + 1) + ' (' + (1990 + i % 36) + ')', stream_icon: poster(i), category_id: String(10 + i % 4),
   rating: ((i * 37) % 90 / 10).toFixed(1), container_extension: 'mp4', added: String(1700000000 + i * 1000) });
 for (i = 0; i < 40; i++) series.push({ series_id: 5000 + i, name: 'Série de Teste ' + (i + 1), cover: poster(i), category_id: String(20 + i % 2), rating: ((i * 53) % 90 / 10).toFixed(1),
-  releaseDate: (2000 + i % 26) + '-01-01', plot: 'Sinopse fictícia usada apenas em testes.', last_modified: String(1700000000 + i) });
+  releaseDate: (2000 + i % 26) + '-01-01', genre: ['Comedy, Drama', 'Comédia', 'Action & Adventure', 'Crime / Suspense', 'Animação, Comédia', ''][i % 6], plot: 'Sinopse fictícia usada apenas em testes.', last_modified: String(1700000000 + i) });
 function seriesInfo(id) {
   var eps = {}, base = (id - 5000) * 100 + 20000;
   [1, 2].forEach(function (s) {
