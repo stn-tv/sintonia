@@ -18,7 +18,7 @@ var S = {
   byKey: {}, favs: load('favs', []), later: load('later', []), pos: load('pos', {}), hist: load('hist', []), intro: load('intro', {}),
   ratings: load('ratings', {}), subs: load('subs', { files: {}, last: {} }), stills: {}, sort: load('sort', 'year'), exp: '', fresh: false,
   brs: load('brs', {}), trk: load('trk', {}), org: load('org', {}), hideBr: load('hideBr', false), rem: load('rem', []), teams: load('teams', []),
-  view: null, cat: {}, genre: {}, spot: {}, loaded: false
+  view: null, cat: {}, catAuto: {}, genre: {}, spot: {}, loaded: false
 };
 // notes saved before the vote rule carry the unreliable scores: they are fetched again as titles appear
 if (load('ratingsV', 0) < 2) { S.ratings = {}; save('ratings', {}); save('ratingsV', 2); }
@@ -800,7 +800,9 @@ function stopTv() {
 /* movies and series: groups stay on the left, titles on the right */
 function renderLibrary(kind) {
   // opening on Continuar instead of Todos: a grid of the whole catalog asks for notes it doesn't need
-  var cats = kind === 'movies' ? S.movieCats : S.seriesCats, list = kind === 'movies' ? S.movies : S.series, seen = byHistory(kind), sel = S.cat[kind] || (seen.length ? '__continue' : '__all'), count = {};
+  var cats = kind === 'movies' ? S.movieCats : S.seriesCats, list = kind === 'movies' ? S.movies : S.series, seen = byHistory(kind), count = {};
+  // Todos picked only because nothing was watched yet is not a choice: once there is history, Continuar comes back
+  var auto = !S.cat[kind] || (S.catAuto[kind] && S.cat[kind] === '__all'), sel = auto ? (seen.length ? '__continue' : '__all') : S.cat[kind];
   if (sel === '__continue' && !seen.length) sel = '__all';
   if (S.hideBr) { list = list.filter(noBr); cats = cats.filter(function (c) { return !catBr(c.category_name); }); }
   var clean = list.filter(noAdult);
@@ -817,7 +819,7 @@ function renderLibrary(kind) {
   mountGrid($('#libGroups'), rows, 'chlist', grpHTML);
   var at = rows.map(rowId).indexOf(sel), col = $('#libGroups .chlist');
   if (col && at >= col._shown) growGrid(col, at + 1);
-  showCat(kind, sel);
+  showCat(kind, sel); S.catAuto[kind] = auto;
   var on = $('.grp.active'); if (on) on.scrollIntoView({ block: 'center' });
 }
 /* search inside the open group, narrowing at every letter: titles that start with it first, then any word that does */
@@ -840,7 +842,7 @@ function typedSearch(v) {
 }
 function showCat(kind, cat) {
   if (cat !== S.cat[kind]) { S.q = ''; S.genre[kind] = ''; }
-  S.cat[kind] = cat; S.spotOff = groupAdult(kind, cat);
+  S.cat[kind] = cat; S.catAuto[kind] = false; S.spotOff = groupAdult(kind, cat);
   $$('.grp').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-grp') === cat); });
   var wrap = $('#gridWrap'), tv = kind === 'live'; wrap.scrollTop = 0;
   if (cat === '__groups') { var rows = groupRows(kind); mountGrid(wrap, rows, 'chlist', grpHTML); setText('#tvPath', pathLabel(kind, cat, rows.length)); return; }
@@ -1806,7 +1808,7 @@ function closeRemote() {
 function refreshApp() {
   var live = playerShown() && P.item && P.item.kind === 'live';
   setBusy('Atualizando: Limpando o Cache e Recarregando a Lista');
-  try { sessionStorage.setItem('atl.after', JSON.stringify({ view: S.view || 'home', spot: S.spot, cat: groupAdult(S.view, S.cat[S.view]) ? null : S.cat[S.view], play: live && !P.item.adult ? P.item.kind + ':' + P.item.id : null, tv: !!P.tv, full: playerOpen() })); } catch (e) {}
+  try { sessionStorage.setItem('atl.after', JSON.stringify({ view: S.view || 'home', spot: S.spot, cat: groupAdult(S.view, S.cat[S.view]) || S.catAuto[S.view] ? null : S.cat[S.view], play: live && !P.item.adult ? P.item.kind + ':' + P.item.id : null, tv: !!P.tv, full: playerOpen() })); } catch (e) {}
   if (playerShown()) saveProgress();
   teardown();
   var wipe = window.caches ? caches.keys().then(function (k) { return Promise.all(k.map(function (n) { return caches.delete(n); })); }) : Promise.resolve();
